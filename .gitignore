@@ -1,0 +1,67 @@
+# ========================
+# ARQUIVOS GERAIS DO PROJETO
+# ========================
+.DS_Store
+desktop.ini
+Thumbs.db
+.vscode/
+.idea/
+*.log
+*.swp
+
+# ========================
+# AMBIENTE VIRTUAL (PYTHON)
+# ========================
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# ========================
+# BACKEND (Django / FastAPI / Flask etc.)
+# ========================
+backend/__pycache__/
+backend/*.sqlite3
+backend/*.db
+backend/*.pyc
+backend/.pytest_cache/
+backend/.mypy_cache/
+backend/.coverage
+backend/.env
+backend/.env.*
+backend/media/
+backend/staticfiles/
+backend/temp/
+backend/.ruff_cache/
+
+# ========================
+# FRONTEND (Next.js / React / Node)
+# ========================
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/dist/
+frontend/.env
+frontend/.env.local
+frontend/.env.development.local
+frontend/.env.production.local
+frontend/.env.test.local
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+frontend/pnpm-debug.log*
+frontend/coverage/
+frontend/.turbo/
+frontend/.vercel/
+frontend/.cache/
+frontend/public/uploads/
+frontend/public/temp/
+
+# ========================
+# LOCKFILES (opcional)
+# ========================
+# package-lock.json
+# yarn.lock
+# pnpm-lock.yaml

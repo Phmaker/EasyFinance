@@ -18,7 +18,15 @@ SECRET_KEY = 'django-insecure-qpqvo1*nhctye+)(8mhl!729zf28&zdgey7hp06@@-yy+9hjg2
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+# 🚀 CORREÇÃO CRÍTICA: Adicionando o IP de rede em uso (192.168.15.19) e o curinga '*' para desenvolvimento.
+ALLOWED_HOSTS = [
+    "127.0.0.1", 
+    "localhost", 
+    "192.168.56.1", 
+    "26.46.76.200", 
+    "192.168.15.19", # Seu IP atual
+    "*"             # Permite qualquer host em desenvolvimento
+]
 
 
 # Application definition
@@ -33,15 +41,16 @@ INSTALLED_APPS = [
     'django_extensions',
     'transactions',
     'rest_framework',
+    # Ativação do CORS
     'corsheaders',
-    # 🚀 CORREÇÃO CRÍTICA: Ativação do pacote Simple JWT
+    # Ativação do Simple JWT
     'rest_framework_simplejwt', 
 ]
 
-# 🚀 ORDEM DO MIDDLEWARE CORRIGIDA PARA JWT/CORS
+# 🚀 CORREÇÃO CRÍTICA: Ordem do Middleware ajustada
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
-    # CORS e Sessão devem vir antes do Common e Auth
+    # CORS deve vir antes do CommonMiddleware e SessionMiddleware
     'corsheaders.middleware.CorsMiddleware', 
     'django.contrib.sessions.middleware.SessionMiddleware', 
     'django.middleware.common.CommonMiddleware',
@@ -128,12 +137,24 @@ STATIC_URL = 'static/'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 
-# CORS CONFIGURATION 
+# 🚀 CORS CONFIGURATION 
+# CORREÇÃO CRÍTICA: Incluindo o IP de rede do seu Next.js no celular
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
+    "http://26.46.76.200:3000",
+    "http://192.168.56.1:3000",
+    "http://192.168.15.19:3000",  # <--- SEU IP DE ACESSO VIA CELULAR
 ]
 
+# NECESSÁRIO para enviar cookies, tokens, etc., em requisições cross-origin
 CORS_ALLOW_CREDENTIALS = True
+
+# 🚀 CONFIGURAÇÃO CSRF: Essencial para POSTs cross-origin
+CSRF_TRUSTED_ORIGINS = [
+    "http://192.168.15.19:3000",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+]
 
 APPEND_SLASH = False
 
@@ -146,6 +167,9 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
     ],
+    
+    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+    'PAGE_SIZE': 10
 }
 
 SIMPLE_JWT = {
