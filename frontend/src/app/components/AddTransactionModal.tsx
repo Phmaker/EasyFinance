@@ -1,141 +1,164 @@
-// src/app/components/AddTransactionModal.tsx
-'use client';
+'use client'
 
-import React, { useState, useEffect } from 'react';
-import useSWR from 'swr';
-import api from '@/lib/api';
-import { FiX } from 'react-icons/fi';
-
-// Importando os tipos que já criamos
+import React, { useState, useEffect, useRef } from 'react';
+import { FiX, FiChevronDown } from 'react-icons/fi';
 import { Category } from './AddCategoryModal';
 import { Account } from './AddAccountModal';
 
-// Interface atualizada para usar IDs numéricos
 export interface Transaction {
-  id?: number;
+  id: number;
   description: string;
   amount: number;
-  type: 'income' | 'expense';
   date: string;
-  category: number; // Agora armazenamos o ID da categoria
-  account: number;  // Agora armazenamos o ID da conta
+  category: number;
+  account: number;
+  category_name?: string;
+  account_name?: string;
+  category_type?: 'income' | 'expense';
 }
 
 interface AddTransactionModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (transaction: Omit<Transaction, 'id'>) => void;
+  onSave: (transaction: Omit<Transaction, 'id' | 'category_type'>) => void;
   initialData?: Transaction | null;
+  categories?: Category[];
+  accounts?: Account[];
 }
 
-const fetcher = (url: string) => api.get(url).then(res => res.data);
-
-const AddTransactionModal = ({ isOpen, onClose, onSave, initialData }: AddTransactionModalProps) => {
-  // 1. Buscando categorias e contas da API para preencher os selects
-  const { data: categories } = useSWR<Category[]>(isOpen ? '/categories/' : null, fetcher);
-  const { data: accounts } = useSWR<Account[]>(isOpen ? '/accounts/' : null, fetcher);
-
+const AddTransactionModal = ({ isOpen, onClose, onSave, initialData, categories, accounts }: AddTransactionModalProps) => {
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState('');
-  const [type, setType] = useState<'income' | 'expense'>('expense');
+  const [date, setDate] = useState('');
   const [categoryId, setCategoryId] = useState<number | ''>('');
   const [accountId, setAccountId] = useState<number | ''>('');
-  const [date, setDate] = useState('');
-
+  
+  const [isCategoryOpen, setCategoryOpen] = useState(false);
+  const [isAccountOpen, setAccountOpen] = useState(false);
+  
   const isEditMode = !!initialData;
+  const categoryDropdownRef = useRef<HTMLDivElement>(null);
+  const accountDropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (isOpen) {
       if (isEditMode && initialData) {
         setDescription(initialData.description);
         setAmount(String(initialData.amount));
-        setType(initialData.type);
+        setDate(initialData.date);
         setCategoryId(initialData.category);
         setAccountId(initialData.account);
-        setDate(initialData.date);
       } else {
-        // Reseta o formulário para o modo de adição
         setDescription('');
         setAmount('');
-        setType('expense');
+        setDate(new Date().toISOString().split('T')[0]);
         setCategoryId('');
         setAccountId('');
-        setDate(new Date().toISOString().split('T')[0]);
       }
     }
   }, [isOpen, initialData, isEditMode]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (categoryDropdownRef.current && !categoryDropdownRef.current.contains(event.target as Node)) {
+        setCategoryOpen(false);
+      }
+      if (accountDropdownRef.current && !accountDropdownRef.current.contains(event.target as Node)) {
+        setAccountOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   if (!isOpen) return null;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!categoryId || !accountId) {
-      alert("Por favor, selecione uma categoria e uma conta.");
+    if (!description || !amount || !date || !categoryId || !accountId) {
+      alert("Por favor, preencha todos os campos.");
       return;
     }
-    onSave({
-      description,
-      amount: parseFloat(amount),
-      type,
-      category: categoryId,
-      account: accountId,
-      date,
+    onSave({ 
+      description, 
+      amount: parseFloat(amount), 
+      date, 
+      category: Number(categoryId), 
+      account: Number(accountId)
     });
     onClose();
   };
+  
+  const selectedCategory = categories?.find(c => c.id === categoryId);
+  const selectedAccountName = accounts?.find(a => a.id === accountId)?.name || 'Selecione...';
 
   return (
     <div className="fixed inset-0 bg-black/60 z-40 flex items-center justify-center p-4">
       <div className="relative w-full max-w-lg rounded-xl bg-gray-900 border border-gray-800 p-6 shadow-2xl">
         <div className="flex justify-between items-center mb-6">
-          <h3 className="text-xl font-bold text-white">
-            {isEditMode ? 'Editar Lançamento' : 'Adicionar Novo Lançamento'}
-          </h3>
+          <h3 className="text-xl font-bold text-white">{isEditMode ? 'Editar Lançamento' : 'Adicionar Novo Lançamento'}</h3>
           <button onClick={onClose} className="text-slate-400 hover:text-white"><FiX className="w-6 h-6" /></button>
         </div>
         
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label htmlFor="description" className="block text-sm font-medium text-slate-400 mb-2">Descrição</label>
-            <input type="text" id="description" value={description} onChange={(e) => setDescription(e.target.value)} className="w-full rounded-lg border border-gray-700 bg-gray-800 p-3 text-white focus:border-blue-500 focus:ring-blue-500/50" required />
+            <label htmlFor="description" className="block text-sm font-medium text-slate-400 mb-1">Descrição</label>
+            <input type="text" id="description" value={description} onChange={(e) => setDescription(e.target.value)} className="w-full rounded-lg border border-gray-700 bg-gray-800 p-3 text-white focus:border-blue-500" required />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label htmlFor="amount" className="block text-sm font-medium text-slate-400 mb-1">Valor</label>
+              <input type="number" step="0.01" id="amount" value={amount} onChange={(e) => setAmount(e.target.value)} className="w-full rounded-lg border border-gray-700 bg-gray-800 p-3 text-white focus:border-blue-500" required />
+            </div>
+            <div>
+              <label htmlFor="date" className="block text-sm font-medium text-slate-400 mb-1">Data</label>
+              <input type="date" id="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-full rounded-lg border border-gray-700 bg-gray-800 p-3 text-white focus:border-blue-500" required />
+            </div>
           </div>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label htmlFor="amount" className="block text-sm font-medium text-slate-400 mb-2">Valor (R$)</label>
-              <input type="number" id="amount" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} className="w-full rounded-lg border border-gray-700 bg-gray-800 p-3 text-white focus:border-blue-500 focus:ring-blue-500/50" required />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="relative" ref={categoryDropdownRef}>
+              <label htmlFor="category" className="block text-sm font-medium text-slate-400 mb-1">Categoria</label>
+              <button type="button" onClick={() => setCategoryOpen(!isCategoryOpen)} className="w-full flex justify-between items-center rounded-lg border border-gray-700 bg-gray-800 p-3 text-white focus:border-blue-500">
+                <span className={`font-medium ${
+                  selectedCategory?.type === 'income' ? 'text-green-400' :
+                  selectedCategory?.type === 'expense' ? 'text-red-400' :
+                  'text-white'
+                }`}>
+                  {selectedCategory?.name || 'Selecione...'}
+                </span>
+                <FiChevronDown className={`transition-transform ${isCategoryOpen ? 'rotate-180' : ''}`} />
+              </button>
+              {isCategoryOpen && (
+                <div className="absolute w-full mt-1 bg-gray-800 border border-gray-700 rounded-lg z-10 max-h-40 overflow-y-auto">
+                  {categories?.map(c => (
+                    // --- CORREÇÃO AQUI ---
+                    <div key={c.id} onClick={() => { setCategoryId(c.id || ''); setCategoryOpen(false); }} className="p-3 hover:bg-blue-600 cursor-pointer flex items-center gap-3">
+                      <span className={`font-medium ${c.type === 'income' ? 'text-green-400' : 'text-red-400'}`}>{c.name}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
-            <div>
-              <label htmlFor="type" className="block text-sm font-medium text-slate-400 mb-2">Tipo</label>
-              <select id="type" value={type} onChange={(e) => setType(e.target.value as 'income' | 'expense')} className="w-full rounded-lg border border-gray-700 bg-gray-800 p-3 text-white focus:border-blue-500 focus:ring-blue-500/50">
-                <option value="expense">Despesa</option>
-                <option value="income">Receita</option>
-              </select>
+
+            <div className="relative" ref={accountDropdownRef}>
+              <label htmlFor="account" className="block text-sm font-medium text-slate-400 mb-1">Conta</label>
+              <button type="button" onClick={() => setAccountOpen(!isAccountOpen)} className="w-full flex justify-between items-center rounded-lg border border-gray-700 bg-gray-800 p-3 text-white focus:border-blue-500">
+                <span>{selectedAccountName}</span>
+                <FiChevronDown className={`transition-transform ${isAccountOpen ? 'rotate-180' : ''}`} />
+              </button>
+              {isAccountOpen && (
+                <div className="absolute w-full mt-1 bg-gray-800 border border-gray-700 rounded-lg z-10 max-h-40 overflow-y-auto">
+                  {accounts?.map(a => (
+                    // --- CORREÇÃO AQUI ---
+                    <div key={a.id} onClick={() => { setAccountId(a.id || ''); setAccountOpen(false); }} className="p-3 hover:bg-blue-600 cursor-pointer">{a.name}</div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-             <div>
-              <label htmlFor="category" className="block text-sm font-medium text-slate-400 mb-2">Categoria</label>
-              <select id="category" value={categoryId} onChange={(e) => setCategoryId(Number(e.target.value))} className="w-full rounded-lg border border-gray-700 bg-gray-800 p-3 text-white focus:border-blue-500 focus:ring-blue-500/50" required>
-                <option value="" disabled>Selecione...</option>
-                {categories?.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
-              </select>
-            </div>
-             <div>
-              <label htmlFor="account" className="block text-sm font-medium text-slate-400 mb-2">Conta</label>
-              <select id="account" value={accountId} onChange={(e) => setAccountId(Number(e.target.value))} className="w-full rounded-lg border border-gray-700 bg-gray-800 p-3 text-white focus:border-blue-500 focus:ring-blue-500/50" required>
-                <option value="" disabled>Selecione...</option>
-                {accounts?.map(acc => <option key={acc.id} value={acc.id}>{acc.name}</option>)}
-              </select>
-            </div>
-          </div>
-
-           <div>
-            <label htmlFor="date" className="block text-sm font-medium text-slate-400 mb-2">Data</label>
-            <input type="date" id="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-full rounded-lg border border-gray-700 bg-gray-800 p-3 text-white focus:border-blue-500 focus:ring-blue-500/50" required />
-          </div>
-
+          
           <div className="flex justify-end gap-4 pt-4">
             <button type="button" onClick={onClose} className="px-4 py-2 rounded-lg text-slate-300 hover:bg-gray-800">Cancelar</button>
             <button type="submit" className="px-6 py-2 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700">Salvar</button>

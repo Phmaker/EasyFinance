@@ -1,4 +1,3 @@
-// src/app/categories/page.tsx
 'use client'
 
 import React, { useState } from 'react';
@@ -11,10 +10,12 @@ import { FiPlus, FiEdit, FiTrash2, FiMenu } from 'react-icons/fi';
 import AddCategoryModal, { Category } from '../components/AddCategoryModal';
 import AnimatedLayout from '../components/AnimatedLayout';
 import Sidebar from '../components/Sidebar';
+import { AxiosError } from 'axios';
 
 const fetcher = (url: string) => api.get(url).then(res => res.data);
 
 export default function CategoriesPage() {
+  // 1. CORREÇÃO: O endpoint agora espera um array simples de Category
   const { data: categories, error, isLoading } = useSWR<Category[]>('/categories/', fetcher);
   const router = useRouter();
 
@@ -43,13 +44,17 @@ export default function CategoriesPage() {
         await api.delete(`/categories/${idToDelete}/`);
         toast.success('Categoria excluída com sucesso!');
         mutate('/categories/');
-      } catch {
-        toast.error('Erro ao excluir categoria.');
+      } catch (err: unknown) {
+        if (err instanceof AxiosError && err.response?.status === 400) {
+          toast.error('Não é possível excluir uma categoria que já está em uso.');
+        } else {
+          toast.error('Erro ao excluir categoria.');
+        }
       }
     }
   };
 
-  const handleSaveCategory = async (categoryData: { name: string }) => {
+  const handleSaveCategory = async (categoryData: Omit<Category, 'id'>) => {
     const isEditing = !!editingCategory;
     const promise = isEditing
       ? api.put(`/categories/${editingCategory.id}/`, categoryData)
@@ -72,62 +77,52 @@ export default function CategoriesPage() {
           style: { background: '#333', color: '#fff' },
         }} />
 
-        {/* 🔹 Overlay quando sidebar estiver aberta */}
         {isSidebarOpen && (
-          <div
-            onClick={() => setSidebarOpen(false)}
-            className="fixed inset-0 bg-black/60 z-20 lg:hidden"
-          ></div>
+          <div onClick={() => setSidebarOpen(false)} className="fixed inset-0 bg-black/60 z-20 lg:hidden"></div>
         )}
 
-        {/* 🔹 Sidebar Reutilizável */}
         <Sidebar isSidebarOpen={isSidebarOpen} handleLogout={handleLogout} />
 
-        {/* 🔹 Conteúdo principal */}
         <main className="flex-1 p-4 md:p-8 overflow-y-auto flex flex-col">
           <header className="mb-8 flex flex-wrap items-center justify-between gap-4">
             <div>
               <h2 className="text-3xl font-bold text-white">Minhas Categorias</h2>
               <p className="text-slate-400">Crie e gerencie as categorias para seus lançamentos.</p>
             </div>
-
             <div className="flex items-center gap-3">
-              <button
-                onClick={handleOpenAddModal}
-                className="flex items-center gap-2 bg-blue-600 text-white font-semibold px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-              >
+              <button onClick={handleOpenAddModal} className="flex items-center gap-2 bg-blue-600 text-white font-semibold px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors">
                 <FiPlus />
                 <span className="hidden sm:inline">Adicionar Categoria</span>
               </button>
-              <button
-                onClick={() => setSidebarOpen(true)}
-                className="lg:hidden p-2 rounded-md hover:bg-slate-800"
-              >
+              <button onClick={() => setSidebarOpen(true)} className="lg:hidden p-2 rounded-md hover:bg-slate-800">
                 <FiMenu className="w-6 h-6 text-white" />
               </button>
             </div>
           </header>
 
-          {/* 🔹 Lista de Categorias */}
           <div className="rounded-xl border border-black bg-black p-6">
             {isLoading && <p className="text-center text-slate-400">Carregando categorias...</p>}
             {error && <p className="text-center text-red-400">Falha ao carregar os dados.</p>}
             {categories && (
               <ul className="divide-y divide-gray-800">
+                {/* 2. CORREÇÃO: Mapeando diretamente sobre 'categories' */}
                 {categories.map(category => (
                   <li key={category.id} className="flex items-center justify-between py-4">
-                    <span className="text-slate-200 font-medium">{category.name}</span>
+                    <div className="flex items-center gap-3">
+                      <span className="text-slate-200 font-medium">{category.name}</span>
+                      <span className={`px-2 py-0.5 text-xs font-semibold rounded-full ${
+                        category.type === 'income' 
+                        ? 'bg-green-500/20 text-green-400' 
+                        : 'bg-red-500/20 text-red-400'
+                      }`}>
+                        {category.type === 'income' ? 'Receita' : 'Despesa'}
+                      </span>
+                    </div>
                     <div className="flex items-center gap-4">
-                      <button
-                        onClick={() => handleOpenEditModal(category)}
-                        className="text-slate-400 hover:text-blue-400 transition-colors"
-                      >
+                      <button onClick={() => handleOpenEditModal(category)} className="text-slate-400 hover:text-blue-400 transition-colors">
                         <FiEdit />
                       </button>
-                      <button
-                        onClick={() => handleDelete(category.id!)}
-                        className="text-slate-400 hover:text-red-400 transition-colors"
-                      >
+                      <button onClick={() => handleDelete(category.id!)} className="text-slate-400 hover:text-red-400 transition-colors">
                         <FiTrash2 />
                       </button>
                     </div>
@@ -138,7 +133,6 @@ export default function CategoriesPage() {
           </div>
         </main>
 
-        {/* 🔹 Modal de Adicionar/Editar Categoria */}
         <AddCategoryModal
           isOpen={isModalOpen}
           onClose={() => setModalOpen(false)}

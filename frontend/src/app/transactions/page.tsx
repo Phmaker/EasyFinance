@@ -1,4 +1,3 @@
-// src/app/transactions/page.tsx
 'use client'
 
 import React, { useState, useMemo } from 'react';
@@ -14,15 +13,13 @@ import { Account } from '../components/AddAccountModal';
 import AnimatedLayout from '../components/AnimatedLayout';
 import Sidebar from '../components/Sidebar';
 
-// SWR fetcher
 const fetcher = (url: string) => api.get(url).then(res => res.data);
 
-// Tipo da resposta paginada
-interface PaginatedTransactions {
+interface PaginatedResponse<T> {
   count: number;
   next: string | null;
   previous: string | null;
-  results: Transaction[];
+  results: T[];
 }
 
 export default function TransactionsPage() {
@@ -32,16 +29,15 @@ export default function TransactionsPage() {
   const [isModalOpen, setModalOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
 
-  // 🧭 Filtros
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedAccount, setSelectedAccount] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [selectedType, setSelectedType] = useState<'income' | 'expense' | ''>('');
 
-  // SWR
   const { data: paginatedData, error, isLoading } =
-    useSWR<PaginatedTransactions>(`/transactions/?page=${page}`, fetcher, { keepPreviousData: true });
+    useSWR<PaginatedResponse<Transaction>>(`/transactions/?page=${page}`, fetcher, { keepPreviousData: true });
   const { data: categories } = useSWR<Category[]>('/categories/', fetcher);
   const { data: accounts } = useSWR<Account[]>('/accounts/', fetcher);
 
@@ -66,13 +62,14 @@ export default function TransactionsPage() {
         await api.delete(`/transactions/${id}/`);
         toast.success('Lançamento excluído com sucesso!');
         mutate(`/transactions/?page=${page}`);
+        mutate('/dashboard/');
       } catch {
         toast.error('Erro ao excluir lançamento.');
       }
     }
   };
 
-  const handleSaveTransaction = async (transactionData: Omit<Transaction, 'id'>) => {
+  const handleSaveTransaction = async (transactionData: Omit<Transaction, 'id' | 'category_type'>) => {
     const isEditing = !!editingTransaction;
     const promise = isEditing
       ? api.put(`/transactions/${editingTransaction.id}/`, transactionData)
@@ -84,7 +81,8 @@ export default function TransactionsPage() {
       setModalOpen(false);
       mutate(`/transactions/?page=${page}`);
       mutate('/dashboard/');
-    } catch {
+    } catch (err) {
+      console.error(err);
       toast.error(`Erro ao ${editingTransaction ? 'atualizar' : 'salvar'} lançamento.`);
     }
   };
@@ -93,41 +91,29 @@ export default function TransactionsPage() {
   const handlePreviousPage = () => paginatedData?.previous && setPage(p => p - 1);
   const totalPages = paginatedData ? Math.ceil(paginatedData.count / 10) : 0;
 
-  // 🔎 Lógica de filtro (local)
   const filteredTransactions = useMemo(() => {
     if (!paginatedData?.results) return [];
     return paginatedData.results.filter((t) => {
+      const transactionDate = new Date(t.date + 'T00:00:00');
       const matchesSearch = t.description.toLowerCase().includes(searchTerm.toLowerCase());
       const matchesAccount = selectedAccount ? t.account === Number(selectedAccount) : true;
       const matchesCategory = selectedCategory ? t.category === Number(selectedCategory) : true;
-      const matchesStartDate = startDate ? new Date(t.date) >= new Date(startDate) : true;
-      const matchesEndDate = endDate ? new Date(t.date) <= new Date(endDate) : true;
-      return matchesSearch && matchesAccount && matchesCategory && matchesStartDate && matchesEndDate;
+      const matchesType = selectedType ? t.category_type === selectedType : true;
+      const matchesStartDate = startDate ? transactionDate >= new Date(startDate + 'T00:00:00') : true;
+      const matchesEndDate = endDate ? transactionDate <= new Date(endDate + 'T00:00:00') : true;
+      return matchesSearch && matchesAccount && matchesCategory && matchesType && matchesStartDate && matchesEndDate;
     });
-  }, [paginatedData, searchTerm, selectedAccount, selectedCategory, startDate, endDate]);
+  }, [paginatedData, searchTerm, selectedAccount, selectedCategory, selectedType, startDate, endDate]);
 
   const handleClearFilters = () => {
-    setSearchTerm('');
-    setSelectedAccount('');
-    setSelectedCategory('');
-    setStartDate('');
-    setEndDate('');
+    setSearchTerm(''); setSelectedAccount(''); setSelectedCategory(''); setSelectedType(''); setStartDate(''); setEndDate('');
   };
-
-  const getCategoryName = (id: number) => categories?.find(c => c.id === id)?.name || '...';
-  const getAccountName = (id: number) => accounts?.find(a => a.id === id)?.name || '...';
 
   return (
     <AnimatedLayout>
       <div className="flex h-screen overflow-hidden">
         <Toaster position="top-right" toastOptions={{ style: { background: '#333', color: '#fff' } }} />
-        {isSidebarOpen && (
-          <div
-            onClick={() => setSidebarOpen(false)}
-            className="fixed inset-0 bg-black/60 z-20 lg:hidden"
-          ></div>
-        )}
-
+        {isSidebarOpen && (<div onClick={() => setSidebarOpen(false)} className="fixed inset-0 bg-black/60 z-20 lg:hidden"></div>)}
         <Sidebar isSidebarOpen={isSidebarOpen} handleLogout={handleLogout} />
 
         <main className="flex-1 p-4 md:p-8 overflow-y-auto flex flex-col">
@@ -136,90 +122,65 @@ export default function TransactionsPage() {
               <h2 className="text-3xl font-bold text-white">Meus Lançamentos</h2>
               <p className="text-slate-400">Filtre e gerencie suas transações.</p>
             </div>
-
             <div className="flex items-center gap-3">
-              <button
-                onClick={handleOpenAddModal}
-                className="flex items-center gap-2 bg-blue-600 text-white font-semibold px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-              >
+              <button onClick={handleOpenAddModal} className="flex items-center gap-2 bg-blue-600 text-white font-semibold px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors">
                 <FiPlus /> <span className="hidden sm:inline">Adicionar</span>
               </button>
-              <button
-                onClick={() => setSidebarOpen(true)}
-                className="lg:hidden p-2 rounded-md hover:bg-slate-800"
-              >
-                <FiMenu className="w-6 h-6 text-white" />
-              </button>
+              <button onClick={() => setSidebarOpen(true)} className="lg:hidden p-2 rounded-md hover:bg-slate-800"><FiMenu className="w-6 h-6 text-white" /></button>
             </div>
           </header>
 
-          {/* 🔍 Filtros */}
-          <div className="mb-6 p-4 rounded-xl bg-slate-900 border border-slate-800 space-y-3">
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-              <div className="col-span-2 flex items-center bg-slate-800 rounded-lg px-3">
+          {/* --- 1. SEÇÃO DE FILTROS COM RESPONSIVIDADE APRIMORADA --- */}
+          <div className="mb-6 p-4 rounded-xl bg-slate-900 border border-slate-800">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {/* Campo de Busca */}
+              <div className="sm:col-span-2 lg:col-span-2 flex items-center bg-slate-800 rounded-lg px-3">
                 <FiSearch className="text-slate-400 mr-2" />
-                <input
-                  type="text"
-                  placeholder="Buscar por descrição..."
-                  value={searchTerm}
-                  onChange={e => setSearchTerm(e.target.value)}
-                  className="bg-transparent w-full outline-none text-slate-200 placeholder-slate-500 py-2"
-                />
+                <input type="text" placeholder="Buscar por descrição..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="bg-transparent w-full outline-none text-slate-200 placeholder-slate-500 py-2"/>
               </div>
-
-              <select
-                value={selectedAccount}
-                onChange={e => setSelectedAccount(e.target.value)}
-                className="bg-slate-800 text-slate-200 rounded-lg px-3 py-2"
+              
+              {/* Filtro de Tipo */}
+              <select 
+                value={selectedType} 
+                // --- 2. CORREÇÃO DO TYPESCRIPT ---
+                onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setSelectedType(e.target.value as any)} 
+                className="bg-slate-800 text-slate-200 rounded-lg px-3 py-2 outline-none"
               >
+                <option value="">Todos os tipos</option>
+                <option value="income">Receitas</option>
+                <option value="expense">Despesas</option>
+              </select>
+              
+              {/* Filtro de Contas */}
+              <select value={selectedAccount} onChange={e => setSelectedAccount(e.target.value)} className="bg-slate-800 text-slate-200 rounded-lg px-3 py-2 outline-none">
                 <option value="">Todas as contas</option>
-                {accounts?.map(a => (
-                  <option key={a.id} value={a.id}>{a.name}</option>
-                ))}
+                {accounts?.map(a => (<option key={a.id} value={a.id}>{a.name}</option>))}
               </select>
-
-              <select
-                value={selectedCategory}
-                onChange={e => setSelectedCategory(e.target.value)}
-                className="bg-slate-800 text-slate-200 rounded-lg px-3 py-2"
-              >
+              
+              {/* Filtro de Categorias */}
+              <select value={selectedCategory} onChange={e => setSelectedCategory(e.target.value)} className="bg-slate-800 text-slate-200 rounded-lg px-3 py-2 outline-none">
                 <option value="">Todas as categorias</option>
-                {categories?.map(c => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
+                {categories?.map(c => (<option key={c.id} value={c.id}>{c.name}</option>))}
               </select>
-
-              <div className="flex gap-2">
-                <input
-                  type="date"
-                  value={startDate}
-                  onChange={e => setStartDate(e.target.value)}
-                  className="bg-slate-800 text-slate-200 rounded-lg px-3 py-2 w-full"
-                />
-                <input
-                  type="date"
-                  value={endDate}
-                  onChange={e => setEndDate(e.target.value)}
-                  className="bg-slate-800 text-slate-200 rounded-lg px-3 py-2 w-full"
-                />
+              
+              {/* Filtro de Data */}
+              <div className="sm:col-span-2 lg:col-span-2 grid grid-cols-2 gap-4">
+                <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="bg-slate-800 text-slate-200 rounded-lg px-3 py-2 w-full outline-none" title="Data inicial"/>
+                <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="bg-slate-800 text-slate-200 rounded-lg px-3 py-2 w-full outline-none" title="Data final"/>
               </div>
-            </div>
 
-            {/* Botões */}
-            <div className="flex flex-wrap gap-3 justify-end">
-              <button
-                onClick={handleClearFilters}
-                className="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-md transition"
-              >
-                Limpar filtros
-              </button>
+              {/* Botão de Limpar (ocupa uma coluna inteira) */}
+              <div className="sm:col-span-2 lg:col-span-1 flex items-end">
+                <button onClick={handleClearFilters} className="w-full bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg transition">Limpar filtros</button>
+              </div>
             </div>
           </div>
 
-          {/* --- Tabela Responsiva --- */}
+
           <div className="flex-1 flex flex-col rounded-xl border border-black bg-black overflow-hidden">
+            {/* A div abaixo garante que a tabela possa rolar horizontalmente em telas pequenas */}
             <div className="overflow-x-auto">
-              <table className="w-full table-auto min-w-[600px]">
+              <table className="w-full table-auto min-w-[700px]">
                 <thead className="border-b border-gray-800">
                   <tr>
                     <th className="px-6 py-4 text-left text-sm font-semibold text-slate-400">Descrição</th>
@@ -231,91 +192,44 @@ export default function TransactionsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {isLoading && (
-                    <tr>
-                      <td colSpan={6} className="text-center py-4 text-slate-400">Carregando...</td>
-                    </tr>
-                  )}
-                  {error && (
-                    <tr>
-                      <td colSpan={6} className="text-center py-4 text-red-400">Erro ao carregar</td>
-                    </tr>
-                  )}
-
+                  {isLoading && (<tr><td colSpan={6} className="text-center py-4 text-slate-400">Carregando...</td></tr>)}
+                  {error && (<tr><td colSpan={6} className="text-center py-4 text-red-400">Erro ao carregar</td></tr>)}
                   {filteredTransactions.map(transaction => (
-                    <tr
-                      key={transaction.id}
-                      className="border-b border-gray-800 hover:bg-gray-900 transition-colors"
-                    >
+                    <tr key={transaction.id} className="border-b border-gray-800 hover:bg-gray-900 transition-colors">
                       <td className="px-6 py-4 text-slate-200">{transaction.description}</td>
-                      <td className="px-6 py-4 text-slate-400">{getCategoryName(transaction.category)}</td>
-                      <td className="px-6 py-4 text-slate-400">{getAccountName(transaction.account)}</td>
-                      <td className="px-6 py-4 text-slate-400">
-                        {new Date(transaction.date).toLocaleDateString('pt-BR')}
-                      </td>
-                      <td
-                        className={`px-6 py-4 text-right font-semibold ${
-                          transaction.type === 'income' ? 'text-green-400' : 'text-red-400'
-                        }`}
-                      >
+                      <td className="px-6 py-4 text-slate-400">{transaction.category_name}</td>
+                      <td className="px-6 py-4 text-slate-400">{transaction.account_name}</td>
+                      <td className="px-6 py-4 text-slate-400">{new Date(transaction.date + 'T00:00:00').toLocaleDateString('pt-BR')}</td>
+                      <td className={`px-6 py-4 text-right font-semibold ${transaction.category_type === 'income' ? 'text-green-400' : 'text-red-400'}`}>
                         {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(transaction.amount)}
                       </td>
                       <td className="px-6 py-4 text-center">
                         <div className="flex justify-center gap-3">
-                          <button
-                            onClick={() => handleOpenEditModal(transaction)}
-                            className="text-slate-400 hover:text-blue-400"
-                          >
-                            <FiEdit />
-                          </button>
-                          <button
-                            onClick={() => handleDelete(transaction.id!)}
-                            className="text-slate-400 hover:text-red-400"
-                          >
-                            <FiTrash2 />
-                          </button>
+                          <button onClick={() => handleOpenEditModal(transaction)} className="text-slate-400 hover:text-blue-400"><FiEdit /></button>
+                          <button onClick={() => handleDelete(transaction.id!)} className="text-slate-400 hover:text-red-400"><FiTrash2 /></button>
                         </div>
                       </td>
                     </tr>
                   ))}
-
-                  {filteredTransactions.length === 0 && !isLoading && (
-                    <tr>
-                      <td colSpan={6} className="text-center py-6 text-slate-400">
-                        Nenhum lançamento encontrado com os filtros selecionados.
-                      </td>
-                    </tr>
-                  )}
+                  {filteredTransactions.length === 0 && !isLoading && (<tr><td colSpan={6} className="text-center py-6 text-slate-400">Nenhum lançamento encontrado.</td></tr>)}
                 </tbody>
               </table>
             </div>
-
-            {/* Paginação */}
             <div className="flex items-center justify-between mt-auto p-4 border-t border-gray-800 text-slate-300">
-              <button
-                onClick={handlePreviousPage}
-                disabled={!paginatedData?.previous || isLoading}
-                className="px-4 py-2 bg-slate-800 rounded-md disabled:opacity-50 hover:bg-slate-700"
-              >
-                Anterior
-              </button>
+              <button onClick={handlePreviousPage} disabled={!paginatedData?.previous || isLoading} className="px-4 py-2 bg-slate-800 rounded-md disabled:opacity-50 hover:bg-slate-700">Anterior</button>
               {totalPages > 0 && <span>Página {page} de {totalPages}</span>}
-              <button
-                onClick={handleNextPage}
-                disabled={!paginatedData?.next || isLoading}
-                className="px-4 py-2 bg-slate-800 rounded-md disabled:opacity-50 hover:bg-slate-700"
-              >
-                Próximo
-              </button>
+              <button onClick={handleNextPage} disabled={!paginatedData?.next || isLoading} className="px-4 py-2 bg-slate-800 rounded-md disabled:opacity-50 hover:bg-slate-700">Próximo</button>
             </div>
           </div>
         </main>
-
+        
         <AddTransactionModal
           isOpen={isModalOpen}
           onClose={() => setModalOpen(false)}
           onSave={handleSaveTransaction}
           initialData={editingTransaction}
+          categories={categories}
+          accounts={accounts}
         />
       </div>
     </AnimatedLayout>

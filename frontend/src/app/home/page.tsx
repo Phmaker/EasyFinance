@@ -1,4 +1,3 @@
-// src/app/home/page.tsx
 'use client'
 
 import React, { useState, useEffect } from 'react';
@@ -13,9 +12,10 @@ import {
   FiTrendingUp as FiFuture
 } from 'react-icons/fi';
 import ExpenseChart from '../components/ExpenseChart';
+// A interface Transaction agora precisa ser atualizada na sua fonte original
 import { Transaction } from '../components/AddTransactionModal';
 import AnimatedLayout from '../components/AnimatedLayout';
-import Sidebar from '../components/Sidebar'; // <-- 1. IMPORTE O NOVO COMPONENTE
+import Sidebar from '../components/Sidebar';
 
 // --- (Componente StatCard) - Sem alterações ---
 interface StatCardProps {
@@ -26,7 +26,6 @@ interface StatCardProps {
   changeType?: 'up' | 'down';
   changeText?: string;
 }
-
 function StatCard({ title, value, icon: Icon, percentageChange, changeType, changeText }: StatCardProps) {
   const changeColor = changeType === 'up' ? 'text-green-400' : 'text-red-400';
   const ChangeIcon = changeType === 'up' ? FiArrowUpRight : FiArrowDownRight;
@@ -62,7 +61,6 @@ function StatCard({ title, value, icon: Icon, percentageChange, changeType, chan
   );
 }
 
-
 // --- (Componente Calendar) - Sem alterações ---
 interface Holiday { date: string; name: string; type: string; }
 interface CalendarProps {
@@ -80,7 +78,7 @@ function Calendar({ upcomingTransactions, selectedDate, onDateSelect }: Calendar
       .catch(error => console.error("Erro ao buscar feriados:", error));
   }, [year]);
   const transactionDays = new Set(
-    upcomingTransactions.map(t => {
+    (upcomingTransactions || []).map(t => {
       const date = new Date(t.date + 'T00:00:00');
       return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
     })
@@ -118,7 +116,7 @@ function Calendar({ upcomingTransactions, selectedDate, onDateSelect }: Calendar
       >
         {day}
         {hasTransaction && <span className="absolute bottom-1.5 w-1.5 h-1.5 bg-red-400 rounded-full" title="Há um lançamento neste dia"></span>}
-        {holiday && <span className="absolute bottom-1.5 left-1.5 w-1.5 h-1.5 bg-green-400 rounded-full" title={holiday.name}></span>}
+        {holiday && <span className="absolute bottom-1.5 left-1.5 h-1.5 bg-green-400 rounded-full" title={holiday.name}></span>}
       </div>
     );
   }
@@ -137,11 +135,15 @@ function Calendar({ upcomingTransactions, selectedDate, onDateSelect }: Calendar
   );
 }
 
-// --- (Componente TransactionItem) - Sem alterações ---
+// --- Componente TransactionItem CORRIGIDO ---
 interface TransactionItemProps { transaction: Transaction; }
 function TransactionItem({ transaction }: TransactionItemProps) {
-  const { type, description, date, amount } = transaction;
-  const isIncome = type === 'income';
+  // 1. CORREÇÃO: Usamos 'category_type' em vez de 'type'
+  const { category_type, description, date, amount } = transaction;
+  
+  // 2. CORREÇÃO: A lógica agora se baseia em 'category_type'
+  const isIncome = category_type === 'income';
+  
   const Icon = isIncome ? FiArrowUpCircle : FiArrowDownCircle;
   const color = isIncome ? 'text-green-400' : 'text-red-400';
   const formattedAmount = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(amount);
@@ -233,7 +235,7 @@ export default function HomePage() {
     }
   };
   
-  const filteredTransactions = dashboardData?.upcoming_transactions.filter(transaction => {
+  const filteredTransactions = (dashboardData?.upcoming_transactions ?? []).filter(transaction => {
     if (!selectedDate) return true;
     const transactionDate = new Date(transaction.date + 'T00:00:00');
     return (
@@ -274,7 +276,6 @@ export default function HomePage() {
       <div className="flex h-screen overflow-hidden">
         {isSidebarOpen && (<div onClick={() => setSidebarOpen(false)} className="fixed inset-0 bg-black/60 z-20 lg:hidden"></div>)}
 
-        {/* 2. SUBSTITUA O <aside> ANTIGO POR ISTO */}
         <Sidebar 
           isSidebarOpen={isSidebarOpen}
           handleLogout={handleLogout}
@@ -296,14 +297,14 @@ export default function HomePage() {
               : error ? <div className="col-span-full rounded-xl border border-red-900 bg-red-950 p-6 text-center text-red-400">Erro ao carregar dados.</div>
               : (
                 <>
-                  <StatCard title="Saldo Atual" value={formatCurrency(dashboardData?.summary.actual_balance)} icon={FiBriefcase} />
-                  <StatCard title="Saldo Projetado" value={formatCurrency(dashboardData?.summary.projected_balance)} icon={FiFuture} />
-                  <StatCard title="Receitas do Mês" value={formatCurrency(dashboardData?.summary.monthly_income)} icon={FiTrendingUp} />
-                  <StatCard title="Despesas do Mês" value={formatCurrency(dashboardData?.summary.monthly_expenses)} icon={FiTrendingDown} />
+                  <StatCard title="Saldo Atual" value={formatCurrency(dashboardData?.summary?.actual_balance)} icon={FiBriefcase} />
+                  <StatCard title="Saldo Projetado" value={formatCurrency(dashboardData?.summary?.projected_balance)} icon={FiFuture} />
+                  <StatCard title="Receitas do Mês" value={formatCurrency(dashboardData?.summary?.monthly_income)} icon={FiTrendingUp} />
+                  <StatCard title="Despesas do Mês" value={formatCurrency(dashboardData?.summary?.monthly_expenses)} icon={FiTrendingDown} />
                   <StatCard
                     title="Variação do Lucro"
-                    value={`${dashboardData?.summary.net_profit_variation ?? 0 >= 0 ? '' : ''}${(dashboardData?.summary.net_profit_variation ?? 0).toFixed(2)}%`}
-                    icon={dashboardData?.summary.net_profit_variation ?? 0 >= 0 ? FiTrendingUp : FiTrendingDown}
+                    value={`${(dashboardData?.summary?.net_profit_variation ?? 0) >= 0 ? '' : ''}${(dashboardData?.summary?.net_profit_variation ?? 0).toFixed(2)}%`}
+                    icon={(dashboardData?.summary?.net_profit_variation ?? 0) >= 0 ? FiTrendingUp : FiTrendingDown}
                     changeText="vs mês anterior"
                   />
                 </>
@@ -316,7 +317,7 @@ export default function HomePage() {
                 <h3 className="font-semibold mb-4">Visão Geral de Despesas</h3>
                 <div className="relative h-full w-full max-h-[300px] mx-auto">
                   {isLoading && <div className="flex items-center justify-center h-full text-slate-500 animate-pulse">Carregando...</div>}
-                  {dashboardData?.expense_chart.data.length === 0 && !isLoading ? (
+                  {dashboardData?.expense_chart?.data.length === 0 && !isLoading ? (
                     <div className="flex flex-col items-center justify-center h-full text-slate-500">
                       <FiInbox className="w-10 h-10 mb-2"/>
                       <p>Nenhuma despesa este mês.</p>
