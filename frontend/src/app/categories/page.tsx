@@ -14,9 +14,15 @@ import { AxiosError } from 'axios';
 
 const fetcher = (url: string) => api.get(url).then(res => res.data);
 
+// 1. CORREÇÃO: Interface para a resposta paginada da API
+interface PaginatedCategoryResponse {
+  results: Category[];
+  // Poderíamos adicionar count, next, previous se precisássemos de paginação
+}
+
 export default function CategoriesPage() {
-  // 1. CORREÇÃO: O endpoint agora espera um array simples de Category
-  const { data: categories, error, isLoading } = useSWR<Category[]>('/categories/', fetcher);
+  // 2. CORREÇÃO: useSWR agora espera a resposta paginada e a variável foi renomeada
+  const { data: categoryResponse, error, isLoading } = useSWR<PaginatedCategoryResponse>('/categories/', fetcher);
   const router = useRouter();
 
   const [isSidebarOpen, setSidebarOpen] = useState(false);
@@ -103,10 +109,10 @@ export default function CategoriesPage() {
           <div className="rounded-xl border border-black bg-black p-6">
             {isLoading && <p className="text-center text-slate-400">Carregando categorias...</p>}
             {error && <p className="text-center text-red-400">Falha ao carregar os dados.</p>}
-            {categories && (
+            {categoryResponse && (
               <ul className="divide-y divide-gray-800">
-                {/* 2. CORREÇÃO: Mapeando diretamente sobre 'categories' */}
-                {categories.map(category => (
+                {/* 3. CORREÇÃO: Mapeando sobre 'categoryResponse.results' com segurança */}
+                {categoryResponse?.results?.map(category => (
                   <li key={category.id} className="flex items-center justify-between py-4">
                     <div className="flex items-center gap-3">
                       <span className="text-slate-200 font-medium">{category.name}</span>

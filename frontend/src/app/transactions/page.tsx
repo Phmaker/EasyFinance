@@ -15,6 +15,7 @@ import Sidebar from '../components/Sidebar';
 
 const fetcher = (url: string) => api.get(url).then(res => res.data);
 
+// Interface para a resposta paginada
 interface PaginatedResponse<T> {
   count: number;
   next: string | null;
@@ -29,6 +30,7 @@ export default function TransactionsPage() {
   const [isModalOpen, setModalOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
 
+  // Estados dos Filtros
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedAccount, setSelectedAccount] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
@@ -36,10 +38,12 @@ export default function TransactionsPage() {
   const [endDate, setEndDate] = useState('');
   const [selectedType, setSelectedType] = useState<'income' | 'expense' | ''>('');
 
+  // SWR para buscar dados
   const { data: paginatedData, error, isLoading } =
     useSWR<PaginatedResponse<Transaction>>(`/transactions/?page=${page}`, fetcher, { keepPreviousData: true });
-  const { data: categories } = useSWR<Category[]>('/categories/', fetcher);
-  const { data: accounts } = useSWR<Account[]>('/accounts/', fetcher);
+  // CORREÇÃO: Espera uma resposta paginada para categorias e contas
+  const { data: categoriesData } = useSWR<PaginatedResponse<Category>>('/categories/', fetcher);
+  const { data: accountsData } = useSWR<PaginatedResponse<Account>>('/accounts/', fetcher);
 
   const handleLogout = () => {
     Cookies.remove('auth_token');
@@ -130,55 +134,41 @@ export default function TransactionsPage() {
             </div>
           </header>
 
-          {/* --- 1. SEÇÃO DE FILTROS COM RESPONSIVIDADE APRIMORADA --- */}
+          {/* --- SEÇÃO DE FILTROS COM RESPONSIVIDADE APRIMORADA --- */}
           <div className="mb-6 p-4 rounded-xl bg-slate-900 border border-slate-800">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              {/* Campo de Busca */}
-              <div className="sm:col-span-2 lg:col-span-2 flex items-center bg-slate-800 rounded-lg px-3">
+              <div className="sm:col-span-2 flex items-center bg-slate-800 rounded-lg px-3">
                 <FiSearch className="text-slate-400 mr-2" />
                 <input type="text" placeholder="Buscar por descrição..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="bg-transparent w-full outline-none text-slate-200 placeholder-slate-500 py-2"/>
               </div>
-              
-              {/* Filtro de Tipo */}
               <select 
                 value={selectedType} 
-                // --- 2. CORREÇÃO DO TYPESCRIPT ---
-                onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setSelectedType(e.target.value as any)} 
+                onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setSelectedType(e.target.value as 'income' | 'expense' | '')} 
                 className="bg-slate-800 text-slate-200 rounded-lg px-3 py-2 outline-none"
               >
                 <option value="">Todos os tipos</option>
                 <option value="income">Receitas</option>
                 <option value="expense">Despesas</option>
               </select>
-              
-              {/* Filtro de Contas */}
               <select value={selectedAccount} onChange={e => setSelectedAccount(e.target.value)} className="bg-slate-800 text-slate-200 rounded-lg px-3 py-2 outline-none">
                 <option value="">Todas as contas</option>
-                {accounts?.map(a => (<option key={a.id} value={a.id}>{a.name}</option>))}
+                {accountsData?.results?.map(a => (<option key={a.id} value={a.id}>{a.name}</option>))}
               </select>
-              
-              {/* Filtro de Categorias */}
               <select value={selectedCategory} onChange={e => setSelectedCategory(e.target.value)} className="bg-slate-800 text-slate-200 rounded-lg px-3 py-2 outline-none">
                 <option value="">Todas as categorias</option>
-                {categories?.map(c => (<option key={c.id} value={c.id}>{c.name}</option>))}
+                {categoriesData?.results?.map(c => (<option key={c.id} value={c.id}>{c.name}</option>))}
               </select>
-              
-              {/* Filtro de Data */}
               <div className="sm:col-span-2 lg:col-span-2 grid grid-cols-2 gap-4">
                 <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="bg-slate-800 text-slate-200 rounded-lg px-3 py-2 w-full outline-none" title="Data inicial"/>
                 <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="bg-slate-800 text-slate-200 rounded-lg px-3 py-2 w-full outline-none" title="Data final"/>
               </div>
-
-              {/* Botão de Limpar (ocupa uma coluna inteira) */}
               <div className="sm:col-span-2 lg:col-span-1 flex items-end">
                 <button onClick={handleClearFilters} className="w-full bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg transition">Limpar filtros</button>
               </div>
             </div>
           </div>
 
-
           <div className="flex-1 flex flex-col rounded-xl border border-black bg-black overflow-hidden">
-            {/* A div abaixo garante que a tabela possa rolar horizontalmente em telas pequenas */}
             <div className="overflow-x-auto">
               <table className="w-full table-auto min-w-[700px]">
                 <thead className="border-b border-gray-800">
@@ -228,8 +218,8 @@ export default function TransactionsPage() {
           onClose={() => setModalOpen(false)}
           onSave={handleSaveTransaction}
           initialData={editingTransaction}
-          categories={categories}
-          accounts={accounts}
+          categories={categoriesData?.results}
+          accounts={accountsData?.results}
         />
       </div>
     </AnimatedLayout>

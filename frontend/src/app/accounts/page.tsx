@@ -1,4 +1,3 @@
-// src/app/accounts/page.tsx
 'use client'
 
 import React, { useState } from 'react';
@@ -7,21 +6,23 @@ import useSWR, { mutate } from 'swr';
 import api from '@/lib/api';
 import Cookies from 'js-cookie';
 import { Toaster, toast } from 'react-hot-toast';
-import {
-  FiPlus,
-  FiEdit,
-  FiTrash2,
-  FiMenu
-} from 'react-icons/fi';
+import { FiPlus, FiEdit, FiTrash2, FiMenu } from 'react-icons/fi';
 import AddAccountModal, { Account } from '../components/AddAccountModal';
 import AnimatedLayout from '../components/AnimatedLayout';
 import Sidebar from '../components/Sidebar';
 
 const fetcher = (url: string) => api.get(url).then(res => res.data);
 
+// --- 1. CORREÇÃO: Interface para a resposta paginada da API ---
+interface PaginatedAccountResponse {
+  results: Account[];
+  // Poderíamos adicionar count, next, previous se precisássemos de paginação
+}
+
 export default function AccountsPage() {
   const router = useRouter();
-  const { data: accounts, error, isLoading } = useSWR<Account[]>('/accounts/', fetcher);
+  // --- 2. CORREÇÃO: useSWR agora espera a resposta paginada e a variável foi renomeada ---
+  const { data: accountsData, error, isLoading } = useSWR<PaginatedAccountResponse>('/accounts/', fetcher);
   
   const [isSidebarOpen, setSidebarOpen] = useState(false);
   const [isModalOpen, setModalOpen] = useState(false);
@@ -85,7 +86,6 @@ export default function AccountsPage() {
           style: { background: '#333', color: '#fff' },
         }} />
 
-        {/* 🔹 Overlay quando sidebar estiver aberta */}
         {isSidebarOpen && (
           <div
             onClick={() => setSidebarOpen(false)}
@@ -93,40 +93,31 @@ export default function AccountsPage() {
           ></div>
         )}
 
-        {/* 🔹 Sidebar Reutilizável */}
         <Sidebar isSidebarOpen={isSidebarOpen} handleLogout={handleLogout} />
 
-        {/* 🔹 Conteúdo principal */}
         <main className="flex-1 p-4 md:p-8 overflow-y-auto flex flex-col">
           <header className="mb-8 flex flex-wrap items-center justify-between gap-4">
             <div>
               <h2 className="text-3xl font-bold text-white">Minhas Contas</h2>
               <p className="text-slate-400">Gerencie suas contas bancárias, cartões e carteiras.</p>
             </div>
-
             <div className="flex items-center gap-3">
-              <button
-                onClick={handleOpenAddModal}
-                className="flex items-center gap-2 bg-blue-600 text-white font-semibold px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-              >
+              <button onClick={handleOpenAddModal} className="flex items-center gap-2 bg-blue-600 text-white font-semibold px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors">
                 <FiPlus />
                 <span className="hidden sm:inline">Adicionar Conta</span>
               </button>
-              <button
-                onClick={() => setSidebarOpen(true)}
-                className="lg:hidden p-2 rounded-md hover:bg-slate-800"
-              >
+              <button onClick={() => setSidebarOpen(true)} className="lg:hidden p-2 rounded-md hover:bg-slate-800">
                 <FiMenu className="w-6 h-6 text-white" />
               </button>
             </div>
           </header>
 
-          {/* 🔹 Grid de Contas */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {isLoading && <p className="text-center text-slate-400 col-span-full">Carregando contas...</p>}
             {error && <p className="text-center text-red-400 col-span-full">Erro ao carregar as contas.</p>}
 
-            {accounts?.map(account => (
+            {/* --- 3. CORREÇÃO: Mapeando sobre 'accountsData.results' --- */}
+            {accountsData?.results?.map(account => (
               <div
                 key={account.id}
                 className="rounded-xl border border-black bg-black p-6 flex flex-col justify-between"
@@ -150,16 +141,10 @@ export default function AccountsPage() {
                 </div>
 
                 <div className="flex items-center justify-end gap-4 mt-4">
-                  <button
-                    onClick={() => handleOpenEditModal(account)}
-                    className="text-slate-400 hover:text-blue-400 transition-colors"
-                  >
+                  <button onClick={() => handleOpenEditModal(account)} className="text-slate-400 hover:text-blue-400 transition-colors">
                     <FiEdit />
                   </button>
-                  <button
-                    onClick={() => handleDelete(account.id!)}
-                    className="text-slate-400 hover:text-red-400 transition-colors"
-                  >
+                  <button onClick={() => handleDelete(account.id!)} className="text-slate-400 hover:text-red-400 transition-colors">
                     <FiTrash2 />
                   </button>
                 </div>
@@ -168,7 +153,6 @@ export default function AccountsPage() {
           </div>
         </main>
 
-        {/* 🔹 Modal de Adicionar/Editar Conta */}
         <AddAccountModal
           isOpen={isModalOpen}
           onClose={() => setModalOpen(false)}
