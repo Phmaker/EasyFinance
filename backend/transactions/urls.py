@@ -26,14 +26,11 @@ urlpatterns = [
     # Rotas para o Dashboard de Análise
     path('analytics/', views.AnalyticsView.as_view(), name='analytics-data'),
     path('reports/category-summary/', views.CategorySummaryReport.as_view(), name='category-summary-report'),
-    
-    # --- ROTA QUE FALTAVA ---
-    # Rota para buscar a lista de categorias do usuário para o dropdown
     path('categories/user-list/', views.UserCategoryListView.as_view(), name='user-category-list'),
     path('analytics/category-details/', views.CategoryDetailsAnalyticsView.as_view(), name='analytics-category-details'),
     
+    # Rotas para Metas
     path('budget-goals/', views.BudgetGoalView.as_view(), name='goal-list-create'),
-    
-    # A rota de detalhe pode continuar como está
     path('budget-goals/<int:pk>/', views.BudgetGoalDetailView.as_view(), name='goal-detail'),
+    path('budget-goals/<int:pk>/add-progress/', views.AddSavingProgressView.as_view(), name='goal-add-progress'),
 ]

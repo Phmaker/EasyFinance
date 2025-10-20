@@ -2,39 +2,52 @@
 
 import React, { useState, useEffect } from 'react';
 import { FiX } from 'react-icons/fi';
-import { Category } from './AddCategoryModal'; // Reutilizando a interface de Categoria
 
-// Interface para os dados de uma Meta de Orçamento
-export interface BudgetGoal {
+// Interfaces
+interface Category {
+  id: number;
+  name: string;
+  type: 'income' | 'expense';
+}
+
+interface BudgetGoal {
   id?: number;
   name: string;
   goal_type: 'spending_limit' | 'saving_goal';
   target_amount: number;
   current_amount?: number;
-  category?: number | null; // ID da categoria para limites de gasto
+  category?: number | null;
   start_date: string;
   end_date: string;
 }
-// Payload para criação, sem campos calculados ou gerados pelo backend
-export type BudgetGoalPayload = Omit<BudgetGoal, 'id' | 'current_amount'>;
 
+// Payload atualizado para ser mais flexível
+export interface BudgetGoalPayload {
+  name: string;
+  target_amount: number;
+  start_date: string;
+  end_date: string;
+  goal_type: 'spending_limit' | 'saving_goal';
+  category: number | null;
+  current_amount?: number;
+}
 
 interface AddGoalModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (goal: BudgetGoalPayload) => void;
+  onSave: (goal: BudgetGoalPayload, id?: number) => void; // Assinatura atualizada
   initialData?: BudgetGoal | null;
-  categories?: Category[]; // Lista de categorias de despesa para o dropdown
+  categories?: Category[];
 }
 
 const AddGoalModal = ({ isOpen, onClose, onSave, initialData, categories }: AddGoalModalProps) => {
-  // Estados do formulário
   const [name, setName] = useState('');
   const [targetAmount, setTargetAmount] = useState('');
   const [goalType, setGoalType] = useState<'spending_limit' | 'saving_goal'>('spending_limit');
   const [selectedCategory, setSelectedCategory] = useState<number | ''>('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [currentAmount, setCurrentAmount] = useState(''); // Para 'saving_goal'
 
   const isEditMode = !!initialData;
 
@@ -47,10 +60,12 @@ const AddGoalModal = ({ isOpen, onClose, onSave, initialData, categories }: AddG
         setSelectedCategory(initialData.category || '');
         setStartDate(initialData.start_date);
         setEndDate(initialData.end_date);
+        setCurrentAmount(String(initialData.current_amount || ''));
       } else {
         // Resetar para o estado inicial
         setName('');
         setTargetAmount('');
+        setCurrentAmount('');
         setGoalType('spending_limit');
         setSelectedCategory('');
         const today = new Date();
@@ -66,22 +81,26 @@ const AddGoalModal = ({ isOpen, onClose, onSave, initialData, categories }: AddG
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name || !targetAmount || !startDate || !endDate) return;
     if (goalType === 'spending_limit' && !selectedCategory) {
-        alert("Por favor, selecione uma categoria para o limite de gasto.");
-        return;
+      alert("Por favor, selecione uma categoria para o limite de gasto.");
+      return;
     }
 
-    onSave({
+    const payload: BudgetGoalPayload = {
       name,
       goal_type: goalType,
       target_amount: parseFloat(targetAmount),
       category: goalType === 'spending_limit' ? Number(selectedCategory) : null,
       start_date: startDate,
       end_date: endDate,
-    });
-    onClose();
+      current_amount: goalType === 'saving_goal' && currentAmount ? parseFloat(currentAmount) : undefined,
+    };
+
+    // Chama onSave com o ID se estiver no modo de edição
+    onSave(payload, initialData?.id);
   };
+
+  const expenseCategories = categories?.filter(c => c.type === 'expense');
 
   return (
     <div className="fixed inset-0 bg-black/60 z-40 flex items-center justify-center p-4">
@@ -96,7 +115,6 @@ const AddGoalModal = ({ isOpen, onClose, onSave, initialData, categories }: AddG
         </div>
         
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Tipo da Meta */}
           <div>
             <label className="block text-sm font-medium text-slate-400 mb-2">Tipo de Meta</label>
             <div className="grid grid-cols-2 gap-3">
@@ -109,43 +127,43 @@ const AddGoalModal = ({ isOpen, onClose, onSave, initialData, categories }: AddG
             </div>
           </div>
 
-          {/* Nome da Meta */}
           <div>
             <label htmlFor="goal-name" className="block text-sm font-medium text-slate-400 mb-1">Nome da Meta</label>
             <input type="text" id="goal-name" value={name} onChange={(e) => setName(e.target.value)} className="w-full rounded-lg border border-gray-700 bg-gray-800 p-3 text-white focus:border-blue-500" placeholder={goalType === 'spending_limit' ? "Ex: Limite de Lazer" : "Ex: Economia para Viagem"} required />
           </div>
 
-          {/* Categoria (só para limites de gasto) */}
-          {goalType === 'spending_limit' && (
+          {goalType === 'spending_limit' ? (
             <div>
               <label htmlFor="goal-category" className="block text-sm font-medium text-slate-400 mb-1">Categoria</label>
               <select 
                 id="goal-category" 
                 value={selectedCategory} 
-                // --- CORREÇÃO AQUI ---
                 onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setSelectedCategory(Number(e.target.value))} 
                 className="w-full rounded-lg border border-gray-700 bg-gray-800 p-3 text-white focus:border-blue-500" 
                 required
               >
                 <option value="" disabled>Selecione uma categoria de despesa...</option>
-                {categories?.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                {expenseCategories?.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
+            </div>
+          ) : (
+            <div>
+                <label htmlFor="current-amount" className="block text-sm font-medium text-slate-400 mb-1">Valor Inicial Guardado (Opcional)</label>
+                <input type="number" step="0.01" id="current-amount" value={currentAmount} onChange={(e) => setCurrentAmount(e.target.value)} className="w-full rounded-lg border border-gray-700 bg-gray-800 p-3 text-white focus:border-blue-500" placeholder="Ex: 150,00" />
             </div>
           )}
 
-          {/* Valor Alvo */}
           <div>
             <label htmlFor="target-amount" className="block text-sm font-medium text-slate-400 mb-1">Valor Alvo</label>
             <input type="number" step="0.01" id="target-amount" value={targetAmount} onChange={(e) => setTargetAmount(e.target.value)} className="w-full rounded-lg border border-gray-700 bg-gray-800 p-3 text-white focus:border-blue-500" placeholder="Ex: 800,00" required />
           </div>
 
-          {/* Período */}
           <div className="grid grid-cols-2 gap-4">
-             <div>
+              <div>
                 <label htmlFor="start-date" className="block text-sm font-medium text-slate-400 mb-1">Data de Início</label>
                 <input type="date" id="start-date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full rounded-lg border border-gray-700 bg-gray-800 p-3 text-white focus:border-blue-500" required />
             </div>
-             <div>
+              <div>
                 <label htmlFor="end-date" className="block text-sm font-medium text-slate-400 mb-1">Data Final</label>
                 <input type="date" id="end-date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-full rounded-lg border border-gray-700 bg-gray-800 p-3 text-white focus:border-blue-500" required />
             </div>

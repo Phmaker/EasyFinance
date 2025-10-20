@@ -2,7 +2,6 @@ from rest_framework import serializers
 from django.contrib.auth.models import User
 from django.db.models import Sum
 from .models import Category, Account, Transaction, BudgetGoal
-from django.utils import timezone
 
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
@@ -48,7 +47,6 @@ class TransactionSerializer(serializers.ModelSerializer):
             'category_name', 'account_name', 'category_type'
         ]
 
-# --- SERIALIZER DE METAS CORRIGIDO ---
 class BudgetGoalSerializer(serializers.ModelSerializer):
     user = serializers.HiddenField(default=serializers.CurrentUserDefault())
     current_amount = serializers.SerializerMethodField()
@@ -60,31 +58,21 @@ class BudgetGoalSerializer(serializers.ModelSerializer):
             'id', 'name', 'goal_type', 'target_amount', 'current_amount',
             'category', 'category_name', 'start_date', 'end_date', 'user'
         ]
-        # O campo 'user' é preenchido automaticamente e não precisa ser enviado pelo frontend
         read_only_fields = ['user', 'current_amount']
 
     def get_current_amount(self, obj):
-        """
-        Calcula o valor atual da meta.
-        - Se for um limite de gasto, soma as transações da categoria no período da meta.
-        - Se for uma meta de economia, retorna o valor salvo.
-        """
         if obj.goal_type == 'spending_limit' and obj.category:
-            # CORREÇÃO: A consulta agora usa o período completo da meta (start_date e end_date)
             spent_amount = Transaction.objects.filter(
                 user=obj.user,
                 category=obj.category,
-                date__range=(obj.start_date, obj.end_date) # Lógica de data corrigida
+                date__range=(obj.start_date, obj.end_date)
             ).aggregate(total=Sum('amount'))['total'] or 0
             return spent_amount
-        
-        # Para 'saving_goal', simplesmente retorna o valor que está no banco
         return obj.current_amount
 
     def create(self, validated_data):
-        # Lógica simplificada. O usuário já é associado pelo HiddenField.
-        # Permite que o 'current_amount' seja definido na criação de uma meta de economia
         if validated_data.get('goal_type') == 'saving_goal':
+            # Usa self.initial_data para pegar o valor que veio do frontend antes da validação
             initial_current_amount = self.initial_data.get('current_amount', 0.00)
             validated_data['current_amount'] = initial_current_amount
         return super().create(validated_data)
