@@ -31,4 +31,9 @@ urlpatterns = [
     # Rota para buscar a lista de categorias do usuário para o dropdown
     path('categories/user-list/', views.UserCategoryListView.as_view(), name='user-category-list'),
     path('analytics/category-details/', views.CategoryDetailsAnalyticsView.as_view(), name='analytics-category-details'),
+    
+    path('budget-goals/', views.BudgetGoalView.as_view(), name='goal-list-create'),
+    
+    # A rota de detalhe pode continuar como está
+    path('budget-goals/<int:pk>/', views.BudgetGoalDetailView.as_view(), name='goal-detail'),
 ]
