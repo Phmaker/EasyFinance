@@ -94,8 +94,7 @@ class TransactionDetail(generics.RetrieveUpdateDestroyAPIView):
 class BudgetGoalView(generics.ListCreateAPIView):
     serializer_class = BudgetGoalSerializer
     permission_classes = [IsAuthenticated]
-    pagination_class = None # <-- A LINHA MAIS IMPORTANTE PARA RESOLVER O PROBLEMA
-
+    pagination_class = None
     def get_queryset(self):
         return BudgetGoal.objects.filter(user=self.request.user)
     def perform_create(self, serializer):
@@ -126,7 +125,7 @@ class AddSavingProgressView(APIView):
         serializer = BudgetGoalSerializer(goal, context={'request': request})
         return Response(serializer.data, status=status.HTTP_200_OK)
 
-# --- VIEWS DE DASHBOARD E ANÁLISE ---
+# --- VIEWS DE DASHBOARD E ANÁLISE (DashboardData ATUALIZADA) ---
 
 def get_date_range(period_str):
     today = timezone.now().date()
@@ -151,8 +150,10 @@ class DashboardData(APIView):
     permission_classes = [IsAuthenticated]
     def get(self, request):
         today = timezone.now().date()
+        tomorrow = today + timedelta(days=1) # Data de amanhã
         user = request.user
         
+        # --- LÓGICA EXISTENTE DO DASHBOARD (sem alterações) ---
         initial_balance_sum = Account.objects.filter(user=user).aggregate(total=Sum('balance'))['total'] or 0
         past_present_income = Transaction.objects.filter(user=user, category__type='income', date__lte=today).aggregate(total=Sum('amount'))['total'] or 0
         past_present_expense = Transaction.objects.filter(user=user, category__type='expense', date__lte=today).aggregate(total=Sum('amount'))['total'] or 0
@@ -180,14 +181,28 @@ class DashboardData(APIView):
         chart_data = [item['total'] for item in expense_summary if item['category__name']]
         upcoming = Transaction.objects.filter(user=user, date__gte=today).order_by('date')
         upcoming_serializer = TransactionSerializer(upcoming, many=True)
+
+        # --- NOVA LÓGICA PARA NOTIFICAÇÕES ---
+        due_today_qs = Transaction.objects.filter(user=user, category__type='expense', date=today)
+        due_tomorrow_qs = Transaction.objects.filter(user=user, category__type='expense', date=tomorrow)
+        
+        due_today_serializer = TransactionSerializer(due_today_qs, many=True)
+        due_tomorrow_serializer = TransactionSerializer(due_tomorrow_qs, many=True)
+
         data = {
             "summary": { "actual_balance": actual_balance, "projected_balance": projected_balance, "monthly_income": monthly_income, "monthly_expenses": monthly_expenses, "net_profit": net_profit, "net_profit_variation": round(profit_variation, 2) },
             "expense_chart": {"labels": chart_labels, "data": chart_data},
-            "upcoming_transactions": upcoming_serializer.data
+            "upcoming_transactions": upcoming_serializer.data,
+            # --- Adicionando o objeto de notificações à resposta da API ---
+            "notifications": {
+                "due_today": due_today_serializer.data,
+                "due_tomorrow": due_tomorrow_serializer.data
+            }
         }
         return Response(data)
 
 class AnalyticsView(APIView):
+    # ... (O restante do seu arquivo continua aqui, sem alterações)
     permission_classes = [IsAuthenticated]
     def get(self, request):
         user = request.user
