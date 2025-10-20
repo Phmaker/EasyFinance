@@ -34,6 +34,7 @@ class AccountSerializer(serializers.ModelSerializer):
         current_balance = obj.balance + income_sum - expense_sum
         return current_balance
 
+# --- 👇 TransactionSerializer ATUALIZADO 👇 ---
 class TransactionSerializer(serializers.ModelSerializer):
     user = serializers.HiddenField(default=serializers.CurrentUserDefault())
     category_name = serializers.CharField(source='category.name', read_only=True)
@@ -42,10 +43,19 @@ class TransactionSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Transaction
+        # 1. Adicionamos os novos campos de recorrência e pagamento
         fields = [
             'id', 'description', 'amount', 'date', 'category', 'account', 'user', 
-            'category_name', 'account_name', 'category_type'
+            'category_name', 'account_name', 'category_type',
+            'paid', # Campo para "Já paguei"
+            'is_recurring',
+            'recurrence_interval',
+            'recurrence_end_date',
+            'parent_transaction'
         ]
+        # 2. O campo 'parent_transaction' é definido apenas pelo backend,
+        # então o tornamos read_only para o frontend.
+        read_only_fields = ['parent_transaction']
 
 class BudgetGoalSerializer(serializers.ModelSerializer):
     user = serializers.HiddenField(default=serializers.CurrentUserDefault())
@@ -72,7 +82,6 @@ class BudgetGoalSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         if validated_data.get('goal_type') == 'saving_goal':
-            # Usa self.initial_data para pegar o valor que veio do frontend antes da validação
             initial_current_amount = self.initial_data.get('current_amount', 0.00)
             validated_data['current_amount'] = initial_current_amount
         return super().create(validated_data)
