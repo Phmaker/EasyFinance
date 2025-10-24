@@ -6,7 +6,7 @@ import Cookies from 'js-cookie';
 import useSWR, { mutate } from 'swr';
 import api from '@/lib/api';
 import { Toaster, toast } from 'react-hot-toast';
-import { FiMenu, FiPlus, FiEdit, FiTrash2, FiSearch, FiRepeat } from 'react-icons/fi';
+import { FiMenu, FiPlus, FiEdit, FiTrash2, FiSearch, FiRepeat, FiFilter, FiX } from 'react-icons/fi';
 import AddTransactionModal, { Transaction } from '../components/AddTransactionModal';
 import { Category } from '../components/AddCategoryModal';
 import { Account } from '../components/AddAccountModal';
@@ -22,8 +22,6 @@ interface PaginatedResponse<T> {
   results: T[];
 }
 
-// --- 👇 1. TIPO ESPECÍFICO PARA OS DADOS DO FORMULÁRIO 👇 ---
-// Este tipo descreve exatamente o que a função onSave do modal envia.
 interface TransactionSaveData {
   description: string;
   amount: number;
@@ -41,6 +39,7 @@ export default function TransactionsPage() {
   const [isSidebarOpen, setSidebarOpen] = useState(false);
   const [isModalOpen, setModalOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
+  const [isFilterVisible, setFilterVisible] = useState(false);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedAccount, setSelectedAccount] = useState('');
@@ -82,7 +81,6 @@ export default function TransactionsPage() {
     }
   };
 
-  // --- 👇 2. FUNÇÃO ATUALIZADA COM OS TIPOS CORRETOS 👇 ---
   const handleSaveTransaction = async (transactionData: TransactionSaveData) => {
     const isEditing = !!editingTransaction;
     const toastId = toast.loading(isEditing ? 'Atualizando lançamento...' : 'Adicionando lançamento...');
@@ -98,10 +96,9 @@ export default function TransactionsPage() {
       
       mutate(`/transactions/?page=${page}`);
       mutate('/dashboard/');
-    } catch (err) { // O tipo 'unknown' é mais seguro que 'any'
+    } catch (err) {
       console.error(err);
       
-      // Verificamos se o erro tem a estrutura que esperamos (de uma resposta da API)
       let errorMessage = `Erro ao ${isEditing ? 'atualizar' : 'salvar'} lançamento.`;
       if (typeof err === 'object' && err !== null && 'response' in err) {
           const responseError = err as { response?: { data?: { detail?: string } } };
@@ -143,51 +140,72 @@ export default function TransactionsPage() {
         <Sidebar isSidebarOpen={isSidebarOpen} handleLogout={handleLogout} />
 
         <main className="flex-1 p-4 md:p-8 overflow-y-auto flex flex-col">
-          <header className="mb-8 flex flex-wrap items-center justify-between gap-4">
+          {/* --- 👇 CORREÇÃO NO HEADER 👇 --- */}
+          <header className="mb-8 flex items-center justify-between gap-4">
+            {/* Grupo da Esquerda: Título */}
             <div>
               <h2 className="text-3xl font-bold text-white">Meus Lançamentos</h2>
               <p className="text-slate-400">Filtre e gerencie suas transações.</p>
             </div>
+            
+            {/* Grupo da Direita: Botões de Ação */}
             <div className="flex items-center gap-3">
-              <button onClick={handleOpenAddModal} className="flex items-center gap-2 bg-blue-600 text-white font-semibold px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors">
-                <FiPlus /> <span className="hidden sm:inline">Adicionar</span>
+              <button 
+                onClick={() => setFilterVisible(!isFilterVisible)} 
+                className="flex items-center justify-center bg-slate-800 text-white font-semibold rounded-lg hover:bg-slate-700 transition-colors h-10 w-10 sm:h-auto sm:w-auto sm:px-4 sm:py-2"
+                title="Filtrar"
+              >
+                <FiFilter /> 
               </button>
-              <button onClick={() => setSidebarOpen(true)} className="lg:hidden p-2 rounded-md hover:bg-slate-800"><FiMenu className="w-6 h-6 text-white" /></button>
+              <button onClick={handleOpenAddModal} className="flex items-center justify-center bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors h-10 w-10 sm:h-auto sm:w-auto sm:px-4 sm:py-2" title="Adicionar Lançamento">
+                <FiPlus />
+              </button>
+              <button onClick={() => setSidebarOpen(true)} className="lg:hidden p-2.5 rounded-lg hover:bg-slate-800"><FiMenu className="w-5 h-5 text-white" /></button>
             </div>
           </header>
 
-          <div className="mb-6 p-4 rounded-xl bg-slate-900 border border-slate-800">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="sm:col-span-2 flex items-center bg-slate-800 rounded-lg px-3">
-                <FiSearch className="text-slate-400 mr-2" />
-                <input type="text" placeholder="Buscar por descrição..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="bg-transparent w-full outline-none text-slate-200 placeholder-slate-500 py-2"/>
+          {isFilterVisible && (
+            <div className="mb-6 p-4 rounded-xl bg-slate-900 border border-slate-800 animate-fade-in-down">
+              <div className="flex justify-between items-center mb-4">
+                  <h3 className="font-semibold text-white">Filtros</h3>
+                  <button onClick={() => setFilterVisible(false)} className="text-slate-400 hover:text-white">
+                      <FiX size={20} />
+                  </button>
               </div>
-              <select 
-                value={selectedType} 
-                onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setSelectedType(e.target.value as 'income' | 'expense' | '')} 
-                className="bg-slate-800 text-slate-200 rounded-lg px-3 py-2 outline-none"
-              >
-                <option value="">Todos os tipos</option>
-                <option value="income">Receitas</option>
-                <option value="expense">Despesas</option>
-              </select>
-              <select value={selectedAccount} onChange={e => setSelectedAccount(e.target.value)} className="bg-slate-800 text-slate-200 rounded-lg px-3 py-2 outline-none">
-                <option value="">Todas as contas</option>
-                {accountsData?.results?.map(a => (<option key={a.id} value={a.id}>{a.name}</option>))}
-              </select>
-              <select value={selectedCategory} onChange={e => setSelectedCategory(e.target.value)} className="bg-slate-800 text-slate-200 rounded-lg px-3 py-2 outline-none">
-                <option value="">Todas as categorias</option>
-                {categoriesData?.results?.map(c => (<option key={c.id} value={c.id}>{c.name}</option>))}
-              </select>
-              <div className="sm:col-span-2 lg:col-span-2 grid grid-cols-2 gap-4">
-                <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="bg-slate-800 text-slate-200 rounded-lg px-3 py-2 w-full outline-none" title="Data inicial"/>
-                <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="bg-slate-800 text-slate-200 rounded-lg px-3 py-2 w-full outline-none" title="Data final"/>
-              </div>
-              <div className="sm:col-span-2 lg:col-span-1 flex items-end">
-                <button onClick={handleClearFilters} className="w-full bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg transition">Limpar filtros</button>
+              <div className="flex flex-col gap-4">
+                <div className="flex items-center bg-slate-800 rounded-lg px-3">
+                  <FiSearch className="text-slate-400 mr-2" />
+                  <input type="text" placeholder="Buscar por descrição..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="bg-transparent w-full outline-none text-slate-200 placeholder-slate-500 py-2"/>
+                </div>
+                
+                <div className='grid grid-cols-1 sm:grid-cols-3 gap-4'>
+                    <select 
+                        value={selectedType} 
+                        onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setSelectedType(e.target.value as 'income' | 'expense' | '')} 
+                        className="bg-slate-800 text-slate-200 rounded-lg px-3 py-2 outline-none w-full"
+                    >
+                        <option value="">Todos os tipos</option>
+                        <option value="income">Receitas</option>
+                        <option value="expense">Despesas</option>
+                    </select>
+                    <select value={selectedAccount} onChange={e => setSelectedAccount(e.target.value)} className="bg-slate-800 text-slate-200 rounded-lg px-3 py-2 outline-none w-full">
+                        <option value="">Todas as contas</option>
+                        {accountsData?.results?.map(a => (<option key={a.id} value={a.id}>{a.name}</option>))}
+                    </select>
+                    <select value={selectedCategory} onChange={e => setSelectedCategory(e.target.value)} className="bg-slate-800 text-slate-200 rounded-lg px-3 py-2 outline-none w-full">
+                        <option value="">Todas as categorias</option>
+                        {categoriesData?.results?.map(c => (<option key={c.id} value={c.id}>{c.name}</option>))}
+                    </select>
+                </div>
+                
+                <div className='grid grid-cols-1 sm:grid-cols-3 gap-4'>
+                    <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="bg-slate-800 text-slate-200 rounded-lg px-3 py-2 w-full outline-none" title="Data inicial"/>
+                    <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="bg-slate-800 text-slate-200 rounded-lg px-3 py-2 w-full outline-none" title="Data final"/>
+                    <button onClick={handleClearFilters} className="w-full bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg transition">Limpar filtros</button>
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
           <div className="flex-1 flex flex-col rounded-xl border border-black bg-black overflow-hidden">
             <div className="overflow-x-auto">
@@ -209,7 +227,7 @@ export default function TransactionsPage() {
                     <tr key={transaction.id} className="border-b border-gray-800 hover:bg-gray-900 transition-colors">
                       <td className="px-6 py-4 text-slate-200">
                         <div className="flex items-center gap-2">
-                           {(transaction.is_recurring || transaction.parent_transaction) && (
+                          {(transaction.is_recurring || transaction.parent_transaction) && (
                             <FiRepeat className="w-4 h-4 text-blue-400 flex-shrink-0" title="Lançamento Recorrente" />
                           )}
                           <span>{transaction.description}</span>

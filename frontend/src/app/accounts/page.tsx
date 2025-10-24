@@ -13,15 +13,12 @@ import Sidebar from '../components/Sidebar';
 
 const fetcher = (url: string) => api.get(url).then(res => res.data);
 
-// --- 1. CORREÇÃO: Interface para a resposta paginada da API ---
 interface PaginatedAccountResponse {
   results: Account[];
-  // Poderíamos adicionar count, next, previous se precisássemos de paginação
 }
 
 export default function AccountsPage() {
   const router = useRouter();
-  // --- 2. CORREÇÃO: useSWR agora espera a resposta paginada e a variável foi renomeada ---
   const { data: accountsData, error, isLoading } = useSWR<PaginatedAccountResponse>('/accounts/', fetcher);
   
   const [isSidebarOpen, setSidebarOpen] = useState(false);
@@ -96,11 +93,15 @@ export default function AccountsPage() {
         <Sidebar isSidebarOpen={isSidebarOpen} handleLogout={handleLogout} />
 
         <main className="flex-1 p-4 md:p-8 overflow-y-auto flex flex-col">
-          <header className="mb-8 flex flex-wrap items-center justify-between gap-4">
+          {/* --- 👇 CORREÇÃO DEFINITIVA AQUI 👇 --- */}
+          {/* Usando flex e justify-between para garantir o alinhamento correto */}
+          <header className="mb-8 flex items-center justify-between gap-4">
+            {/* Grupo da Esquerda */}
             <div>
               <h2 className="text-3xl font-bold text-white">Minhas Contas</h2>
               <p className="text-slate-400">Gerencie suas contas bancárias, cartões e carteiras.</p>
             </div>
+            {/* Grupo da Direita */}
             <div className="flex items-center gap-3">
               <button onClick={handleOpenAddModal} className="flex items-center gap-2 bg-blue-600 text-white font-semibold px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors">
                 <FiPlus />
@@ -116,7 +117,6 @@ export default function AccountsPage() {
             {isLoading && <p className="text-center text-slate-400 col-span-full">Carregando contas...</p>}
             {error && <p className="text-center text-red-400 col-span-full">Erro ao carregar as contas.</p>}
 
-            {/* --- 3. CORREÇÃO: Mapeando sobre 'accountsData.results' --- */}
             {accountsData?.results?.map(account => (
               <div
                 key={account.id}

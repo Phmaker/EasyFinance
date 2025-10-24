@@ -14,14 +14,11 @@ import { AxiosError } from 'axios';
 
 const fetcher = (url: string) => api.get(url).then(res => res.data);
 
-// 1. CORREÇÃO: Interface para a resposta paginada da API
 interface PaginatedCategoryResponse {
   results: Category[];
-  // Poderíamos adicionar count, next, previous se precisássemos de paginação
 }
 
 export default function CategoriesPage() {
-  // 2. CORREÇÃO: useSWR agora espera a resposta paginada e a variável foi renomeada
   const { data: categoryResponse, error, isLoading } = useSWR<PaginatedCategoryResponse>('/categories/', fetcher);
   const router = useRouter();
 
@@ -90,12 +87,16 @@ export default function CategoriesPage() {
         <Sidebar isSidebarOpen={isSidebarOpen} handleLogout={handleLogout} />
 
         <main className="flex-1 p-4 md:p-8 overflow-y-auto flex flex-col">
-          <header className="mb-8 flex flex-wrap items-center justify-between gap-4">
-            <div>
+          {/* --- 👇 CORREÇÃO DEFINITIVA AQUI 👇 --- */}
+          <header className="mb-8 flex items-center gap-4">
+            {/* O contêiner do título agora tem 'flex-grow' para ocupar o espaço e empurrar os botões */}
+            <div className="flex-grow">
               <h2 className="text-3xl font-bold text-white">Minhas Categorias</h2>
               <p className="text-slate-400">Crie e gerencie as categorias para seus lançamentos.</p>
             </div>
-            <div className="flex items-center gap-3">
+            
+            {/* Este grupo de botões será empurrado para a direita */}
+            <div className="flex items-center gap-3 flex-shrink-0">
               <button onClick={handleOpenAddModal} className="flex items-center gap-2 bg-blue-600 text-white font-semibold px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors">
                 <FiPlus />
                 <span className="hidden sm:inline">Adicionar Categoria</span>
@@ -111,7 +112,6 @@ export default function CategoriesPage() {
             {error && <p className="text-center text-red-400">Falha ao carregar os dados.</p>}
             {categoryResponse && (
               <ul className="divide-y divide-gray-800">
-                {/* 3. CORREÇÃO: Mapeando sobre 'categoryResponse.results' com segurança */}
                 {categoryResponse?.results?.map(category => (
                   <li key={category.id} className="flex items-center justify-between py-4">
                     <div className="flex items-center gap-3">
