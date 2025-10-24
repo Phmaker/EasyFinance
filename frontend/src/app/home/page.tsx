@@ -17,8 +17,8 @@ import AnimatedLayout from '../components/AnimatedLayout';
 import Sidebar from '../components/Sidebar';
 import NotificationModal from '../components/NotificationModal';
 
+// --- COMPONENTES INTERNOS ---
 
-// --- (Seus componentes StatCard, Calendar, TransactionItem - sem alterações) ---
 interface StatCardProps {
     title: string;
     value: string;
@@ -27,6 +27,7 @@ interface StatCardProps {
     changeType?: 'up' | 'down';
     changeText?: string;
 }
+
 function StatCard({ title, value, icon: Icon, percentageChange, changeType, changeText }: StatCardProps) {
     const changeColor = changeType === 'up' ? 'text-green-400' : 'text-red-400';
     const ChangeIcon = changeType === 'up' ? FiArrowUpRight : FiArrowDownRight;
@@ -68,23 +69,40 @@ interface CalendarProps {
     selectedDate: Date | null;
     onDateSelect: (date: Date) => void;
 }
+
+// [CORRIGIDO] Componente Calendar substituído pela nova versão
 function Calendar({ upcomingTransactions, selectedDate, onDateSelect }: CalendarProps) {
     const [currentDate, setCurrentDate] = useState(new Date());
     const [holidays, setHolidays] = useState<Holiday[]>([]);
     const year = currentDate.getFullYear();
+    
     useEffect(() => {
         fetch(`https://brasilapi.com.br/api/feriados/v1/${year}`)
-            .then(response => response.json()).then(data => setHolidays(data))
+            .then(response => response.json())
+            .then(data => setHolidays(data))
             .catch(error => console.error("Erro ao buscar feriados:", error));
     }, [year]);
-    const transactionDays = new Set(
-        (upcomingTransactions || []).map(t => {
-            const date = new Date(t.date + 'T00:00:00');
-            return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
-        })
-    );
-    const handlePrevMonth = () => { setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1)); };
-    const handleNextMonth = () => { setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1)); };
+
+    const transactionsByDay = new Map();
+    (upcomingTransactions || []).forEach(t => {
+        const date = new Date(t.date + 'T00:00:00');
+        const dayKey = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+        if (!transactionsByDay.has(dayKey)) {
+            transactionsByDay.set(dayKey, { hasIncome: false, hasExpense: false });
+        }
+        const dayData = transactionsByDay.get(dayKey);
+        if (t.category_type === 'income') dayData.hasIncome = true;
+        else dayData.hasExpense = true;
+    });
+
+    const handlePrevMonth = () => { 
+        setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1)); 
+    };
+    
+    const handleNextMonth = () => { 
+        setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1)); 
+    };
+    
     const month = currentDate.getMonth();
     const monthName = currentDate.toLocaleDateString('pt-BR', { month: 'long' });
     const formattedMonthName = monthName.charAt(0).toUpperCase() + monthName.slice(1);
@@ -92,50 +110,108 @@ function Calendar({ upcomingTransactions, selectedDate, onDateSelect }: Calendar
     const firstDayOfMonth = new Date(year, month, 1).getDay();
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     const today = new Date();
-    const calendarDays = Array.from({ length: firstDayOfMonth }, (_, i) => <div key={`empty-${i}`}></div>);
+
+    const calendarDays = Array.from({ length: firstDayOfMonth }, (_, i) => (
+        <div key={`empty-${i}`}></div>
+    ));
+
     for (let day = 1; day <= daysInMonth; day++) {
-        const isToday = day === today.getDate() && month === today.getMonth() && year === today.getFullYear();
         const dateObj = new Date(year, month, day);
+        const isToday = day === today.getDate() && month === today.getMonth() && year === today.getFullYear();
         const isSelected = selectedDate &&
             day === selectedDate.getDate() &&
             month === selectedDate.getMonth() &&
             year === selectedDate.getFullYear();
-        const hasTransaction = transactionDays.has(`${year}-${month}-${day}`);
+        
+        const dayKey = `${year}-${month}-${day}`;
+        const dayTransactions = transactionsByDay.get(dayKey);
+        const hasIncome = dayTransactions?.hasIncome || false;
+        const hasExpense = dayTransactions?.hasExpense || false;
+        
         const dateString = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
         const holiday = holidays.find(h => h.date === dateString);
+
         calendarDays.push(
             <div
                 key={day}
                 onClick={() => onDateSelect(dateObj)}
-                className={`flex items-center justify-center h-9 w-9 text-base rounded-full transition-colors cursor-pointer 
-          ${isToday ? 'bg-blue-600 text-white font-bold' : 'text-slate-200'}
-          ${isSelected ? 'ring-2 ring-blue-400' : 'hover:bg-slate-700'}
-          ${hasTransaction || holiday ? 'relative' : ''}
-        `}
-                title={holiday?.name}
+                className={`flex flex-col items-center justify-center p-0.5 h-8 w-full rounded transition-all duration-200 ease-in-out cursor-pointer group
+                    ${isSelected 
+                        ? 'bg-slate-800 ring-1 ring-blue-500' 
+                        : 'hover:bg-slate-800'}
+                `}
+                title={holiday?.name || ''}
             >
-                {day}
-                {hasTransaction && <span className="absolute bottom-1.5 w-1.5 h-1.5 bg-red-400 rounded-full" title="Há um lançamento neste dia"></span>}
-                {holiday && <span className="absolute bottom-1.5 left-1.5 h-1.5 bg-green-400 rounded-full" title={holiday.name}></span>}
+                <span className={`
+                    flex items-center justify-center h-6 w-6 text-xs rounded-full
+                    ${isToday 
+                        ? 'font-bold text-blue-400 border border-blue-500' 
+                        : 'text-slate-200 group-hover:text-white'}
+                    ${isSelected ? 'text-white' : ''}
+                `}>
+                    {day}
+                </span>
+                
+                <div className="flex items-center justify-center h-1 mt-0.5 gap-0.5">
+                    {hasIncome && <span className="w-1 h-1 bg-green-400 rounded-full" title="Receita neste dia"></span>}
+                    {hasExpense && <span className="w-1 h-1 bg-red-400 rounded-full" title="Despesa neste dia"></span>}
+                    {holiday && <span className="w-1 h-1 bg-yellow-400 rounded-full" title={holiday.name}></span>}
+                </div>
             </div>
         );
     }
+
     return (
         <div className="flex flex-col h-full">
-            <div className="flex justify-between items-center mb-4">
-                <h3 className="font-semibold text-white">{`${formattedMonthName} ${year}`}</h3>
-                <div className="flex items-center gap-2">
-                    <button onClick={handlePrevMonth} className="text-slate-400 hover:text-white transition-colors"><FiChevronLeft className="w-5 h-5" /></button>
-                    <button onClick={handleNextMonth} className="text-slate-400 hover:text-white transition-colors"><FiChevronRight className="w-5 h-5" /></button>
+            <div className="flex justify-between items-center mb-2">
+                <h3 className="font-semibold text-white text-sm">{`${formattedMonthName} ${year}`}</h3>
+                <div className="flex items-center gap-1">
+                    <button 
+                        onClick={handlePrevMonth} 
+                        className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-700 transition-colors"
+                    >
+                        <FiChevronLeft className="w-4 h-4" />
+                    </button>
+                    <button 
+                        onClick={handleNextMonth} 
+                        className="p-1 rounded text-slate-400 hover:text-white hover:bg-slate-700 transition-colors"
+                    >
+                        <FiChevronRight className="w-4 h-4" />
+                    </button>
                 </div>
             </div>
-            <div className="grid grid-cols-7 text-center text-sm font-medium text-slate-400 mb-2">{daysOfWeek.map(day => <div key={day}>{day}</div>)}</div>
-            <div className="grid grid-cols-7 place-items-center text-center gap-y-2 flex-grow">{calendarDays}</div>
+            
+            <div className="grid grid-cols-7 text-center text-xs font-medium text-slate-500 mb-1">
+                {daysOfWeek.map(day => <div key={day} className="text-[10px]">{day}</div>)}
+            </div>
+            
+            <div className="grid grid-cols-7 place-items-center text-center gap-0.5 flex-grow">
+                {calendarDays}
+            </div>
+
+            <div className="mt-2 pt-2 border-t border-slate-800">
+                <div className="flex flex-wrap justify-center gap-x-3 gap-y-1 text-[10px] text-slate-400">
+                    <div className="flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 bg-green-400 rounded-full"></span>
+                        <span>Receita</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 bg-red-400 rounded-full"></span>
+                        <span>Despesa</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 bg-yellow-400 rounded-full"></span>
+                        <span>Feriado</span>
+                    </div>
+                </div>
+            </div>
         </div>
     );
 }
 
+
 interface TransactionItemProps { transaction: Transaction; }
+
 function TransactionItem({ transaction }: TransactionItemProps) {
     const { category_type, description, date, amount } = transaction;
     const isIncome = category_type === 'income';
@@ -172,10 +248,11 @@ function TransactionItem({ transaction }: TransactionItemProps) {
         </li>
     );
 }
+
 // --- FIM DOS COMPONENTES INTERNOS ---
 
-
 const fetcher = (url: string) => api.get(url).then(res => res.data);
+
 interface DashboardData {
     summary: {
         actual_balance: number;
@@ -208,7 +285,6 @@ export default function HomePage() {
     const [expenseData, setExpenseData] = useState<ChartData<'doughnut'>>({ labels: [], datasets: [] });
     const [selectedDate, setSelectedDate] = useState<Date | null>(null);
 
-    // [ALTERADO] Este useEffect agora filtra as notificações com base no localStorage
     useEffect(() => {
         if (dashboardData?.notifications) {
             const storedPaidIds = localStorage.getItem('paidNotificationIds');
@@ -228,7 +304,6 @@ export default function HomePage() {
         }
     }, [dashboardData]);
 
-    // Este useEffect controla a abertura automática do modal, usando o estado já filtrado
     useEffect(() => {
         const hasBeenAcknowledged = sessionStorage.getItem('notificationsAcknowledged') === 'true';
         const hasVisibleNotifications = visibleNotifications.due_today.length > 0 || visibleNotifications.due_tomorrow.length > 0;
@@ -238,7 +313,6 @@ export default function HomePage() {
         }
     }, [visibleNotifications]);
 
-    // Efeito para configurar o gráfico de despesas (sem alterações)
     useEffect(() => {
         if (dashboardData?.expense_chart) {
             const formattedData: ChartData<'doughnut'> = {
@@ -254,13 +328,25 @@ export default function HomePage() {
         }
     }, [dashboardData]);
 
-    // --- FUNÇÕES DE MANIPULAÇÃO (HANDLERS) ---
+    const getNext30DaysTransactions = (transactions: Transaction[]): Transaction[] => {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        
+        const thirtyDaysFromNow = new Date();
+        thirtyDaysFromNow.setDate(today.getDate() + 30);
+        thirtyDaysFromNow.setHours(23, 59, 59, 999);
+
+        return transactions.filter(transaction => {
+            const transactionDate = new Date(transaction.date + 'T00:00:00');
+            return transactionDate >= today && transactionDate <= thirtyDaysFromNow;
+        });
+    };
+
     const formatCurrency = (value: number | undefined) => {
         if (value === undefined || isNaN(value)) return "R$ 0,00";
         return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
     }
     
-    // [ALTERADO] Esta função agora salva o ID no localStorage e atualiza a UI
     const handleMarkAsPaid = (transactionId: number) => {
         const storedPaidIds = localStorage.getItem('paidNotificationIds');
         const paidIds: number[] = storedPaidIds ? JSON.parse(storedPaidIds) : [];
@@ -295,18 +381,23 @@ export default function HomePage() {
         }
     };
 
-    const filteredTransactions = (dashboardData?.upcoming_transactions ?? []).filter(transaction => {
-        if (!selectedDate) return true;
-        const transactionDate = new Date(transaction.date + 'T00:00:00');
-        return (
-            transactionDate.getFullYear() === selectedDate.getFullYear() &&
-            transactionDate.getMonth() === selectedDate.getMonth() &&
-            transactionDate.getDate() === selectedDate.getDate()
-        );
-    });
+    const upcomingTransactions = dashboardData?.upcoming_transactions || [];
+    const next30DaysTransactions = getNext30DaysTransactions(upcomingTransactions);
+
+    const filteredTransactions = (selectedDate 
+        ? next30DaysTransactions.filter(transaction => {
+            const transactionDate = new Date(transaction.date + 'T00:00:00');
+            return (
+                transactionDate.getFullYear() === selectedDate.getFullYear() &&
+                transactionDate.getMonth() === selectedDate.getMonth() &&
+                transactionDate.getDate() === selectedDate.getDate()
+            );
+        })
+        : next30DaysTransactions
+    );
 
     const totalVisibleNotifications = (visibleNotifications.due_today.length || 0) + 
-                                      (visibleNotifications.due_tomorrow.length || 0);
+                                        (visibleNotifications.due_tomorrow.length || 0);
 
     const chartOptions: ChartOptions<'doughnut'> = {
         responsive: true,
@@ -347,19 +438,19 @@ export default function HomePage() {
                             <p className="text-slate-400">Aqui está o resumo financeiro do seu mês.</p>
                         </div>
                         <div className="flex items-center gap-4">
-                          <button
-                            onClick={() => setNotificationModalOpen(true)}
-                            className="relative p-2 rounded-md hover:bg-slate-800 transition-colors"
-                            title="Ver Notificações"
-                          >
-                            <FiBell className="w-6 h-6 text-white" />
-                            {totalVisibleNotifications > 0 && (
-                              <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center animate-pulse">
-                                {totalVisibleNotifications}
-                              </span>
-                            )}
-                          </button>
-                          <button onClick={() => setSidebarOpen(true)} className="lg:hidden p-2 rounded-md hover:bg-slate-800"><FiMenu className="w-6 h-6 text-white" /></button>
+                            <button
+                                onClick={() => setNotificationModalOpen(true)}
+                                className="relative p-2 rounded-md hover:bg-slate-800 transition-colors"
+                                title="Ver Notificações"
+                            >
+                                <FiBell className="w-6 h-6 text-white" />
+                                {totalVisibleNotifications > 0 && (
+                                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center animate-pulse">
+                                        {totalVisibleNotifications}
+                                    </span>
+                                )}
+                            </button>
+                            <button onClick={() => setSidebarOpen(true)} className="lg:hidden p-2 rounded-md hover:bg-slate-800"><FiMenu className="w-6 h-6 text-white" /></button>
                         </div>
                     </header>
                     
@@ -391,7 +482,7 @@ export default function HomePage() {
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                         <div className="lg:col-span-2 flex flex-col gap-6">
                             <div className="rounded-xl border border-black bg-black p-6 h-96">
-                                <h3 className="font-semibold mb-4">Visão Geral de Despesas</h3>
+                                <h3 className="font-semibold mb-4 text-white">Visão Geral de Despesas</h3>
                                 <div className="relative h-full w-full max-h-[300px] mx-auto">
                                     {isLoading && <div className="flex items-center justify-center h-full text-slate-500 animate-pulse">Carregando gráfico...</div>}
                                     {dashboardData?.expense_chart?.data.length === 0 && !isLoading && !error ? (
@@ -408,7 +499,7 @@ export default function HomePage() {
                                     <h3 className="font-semibold text-white">
                                         {selectedDate
                                             ? `Lançamentos de ${selectedDate.toLocaleDateString('pt-BR')}`
-                                            : "Próximos Lançamentos"
+                                            : "Próximos Lançamentos (30 dias)"
                                         }
                                     </h3>
                                     <a href="/transactions" className="flex items-center gap-2 text-sm text-blue-400 hover:text-blue-300 font-semibold">
@@ -426,7 +517,7 @@ export default function HomePage() {
                                             <div className="flex flex-col items-center justify-center py-10 text-center">
                                                 <FiInbox className="w-10 h-10 text-slate-600 mb-2" />
                                                 <p className="text-slate-500 text-sm">
-                                                    {selectedDate ? "Nenhum lançamento para este dia." : "Nenhum lançamento futuro."}
+                                                    {selectedDate ? "Nenhum lançamento para este dia." : "Nenhum lançamento nos próximos 30 dias."}
                                                 </p>
                                                 <p className="text-slate-600 text-xs">
                                                     {selectedDate ? "" : "Você está em dia!"}
@@ -438,14 +529,15 @@ export default function HomePage() {
                             </div>
                         </div>
 
-                        <div className="lg:col-span-1 rounded-xl border border-black bg-black p-6 h-96">
+                        {/* LINHA ALTERADA ABAIXO */}
+                        <div className="lg:col-span-1 rounded-xl border border-black bg-black p-4 h-96">
                             <Calendar
-                                upcomingTransactions={dashboardData?.upcoming_transactions || []}
+                                upcomingTransactions={next30DaysTransactions}
                                 selectedDate={selectedDate}
                                 onDateSelect={handleDateSelect}
                             />
                         </div>
-                    </div>
+                   </div>
                 </main>
             </div>
             

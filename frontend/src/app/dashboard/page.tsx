@@ -1,292 +1,546 @@
 'use client'
 
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Cookies from 'js-cookie';
 import useSWR from 'swr';
 import api from '@/lib/api';
-
-import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearScale, PointElement, LineElement, Filler } from 'chart.js';
-import { Doughnut, Line } from 'react-chartjs-2';
-import { Toaster, toast } from 'react-hot-toast';
-
-import Sidebar from '../components/Sidebar';
-import { FiMenu, FiTrendingUp, FiTrendingDown, FiDollarSign, FiHash, FiActivity, FiTag, FiChevronDown, FiPlusCircle, FiEdit, FiTrash2, FiPlus } from 'react-icons/fi';
+import type { ChartData, ChartOptions, TooltipItem } from 'chart.js';
+import {
+    FiArrowUpRight, FiArrowDownRight, FiTrendingUp, FiTrendingDown, FiChevronLeft, FiChevronRight,
+    FiMenu, FiArrowUpCircle, FiArrowDownCircle, FiArrowRight, FiInbox, FiBriefcase,
+    FiTrendingUp as FiFuture, FiBell
+} from 'react-icons/fi';
+import ExpenseChart from '../components/ExpenseChart';
+import { Transaction } from '../components/AddTransactionModal';
 import AnimatedLayout from '../components/AnimatedLayout';
+import Sidebar from '../components/Sidebar';
+import NotificationModal from '../components/NotificationModal';
 
-// Importando os modais
-import AddGoalModal, { BudgetGoalPayload } from '../components/AddGoalModal';
-import AddProgressModal from '../components/AddProgressModal';
+// --- COMPONENTES INTERNOS ---
 
-ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, PointElement, LineElement, Filler);
-
-const fetcher = (url: string) => api.get(url).then(res => res.data);
-
-// --- FUNÇÃO DE FORMATAÇÃO CENTRALIZADA ---
-const formatCurrency = (value: number | undefined | null) => {
-    if (value === undefined || value === null || isNaN(value)) return "R$ 0,00";
-    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
-};
-
-// --- INTERFACES DE DADOS ---
-interface Category { id: number; name: string; type: 'income' | 'expense'; }
-interface PaginatedCategoryResponse { results: Category[]; }
-interface CategoryStats { income: number; expenses: number; percentage: number; type: 'income' | 'expense'; }
-interface CompositionData { category__name: string; total: number; }
-interface TimeseriesData { labels: string[]; income_data: number[]; expense_data: number[]; }
-interface AnalyticsData {
-    kpis: {
-        income: number;
-        expenses: number;
-        net_profit: number;
-        average_daily_expense: number;
-        income_transactions: number;
-        expense_transactions: number;
-        top_expense_category: { name: string; amount: number } | null;
-    };
-    income_composition: CompositionData[];
-    expense_composition: CompositionData[];
-    timeseries_data: TimeseriesData;
-}
-interface BudgetGoal {
-    id: number;
-    name: string;
-    goal_type: 'spending_limit' | 'saving_goal';
-    target_amount: number;
-    current_amount: number;
-    category_name?: string;
-    category: number | null;
-    start_date: string;
-    end_date: string;
+interface StatCardProps {
+    title: string;
+    value: string;
+    icon: React.ElementType;
+    percentageChange?: number;
+    changeType?: 'up' | 'down';
+    changeText?: string;
 }
 
-// --- COMPONENTES COM ESTILO ---
-interface StatCardProps { title: string; value: number | string | undefined | null; icon: React.ElementType; subtitle?: string; }
-const StatCard: React.FC<StatCardProps> = ({ title, value, icon: Icon, subtitle }) => {
-    const isNumeric = typeof value === 'number';
-    const formattedValue = isNumeric ? formatCurrency(value) : String(value || '0');
-
+function StatCard({ title, value, icon: Icon, percentageChange, changeType, changeText }: StatCardProps) {
+    const changeColor = changeType === 'up' ? 'text-green-400' : 'text-red-400';
+    const ChangeIcon = changeType === 'up' ? FiArrowUpRight : FiArrowDownRight;
     let valueColor = 'text-white';
-    if (isNumeric) {
-        if (value > 0 && (title.includes('Receitas') || title.includes('Lucro'))) valueColor = 'text-green-400';
-        else if (value < 0 || title.includes('Despesas') || title.includes('Gasto')) valueColor = 'text-red-400';
+    const isDynamicallyColored = title === 'Saldo Atual' || title === 'Saldo Projetado' || title === 'Lucro Líquido' || title === 'Variação do Lucro';
+    if (isDynamicallyColored) {
+        const numericValue = parseFloat(value.replace(/[^0-9.,-]+/g, "").replace('.', '').replace(',', '.'));
+        if (numericValue > 0) valueColor = 'text-green-400';
+        else if (numericValue < 0) valueColor = 'text-red-400';
     }
-
     return (
-        <div className="rounded-xl border border-black bg-black p-4 transition-all duration-200 hover:border-slate-700 flex flex-col justify-between min-h-[110px] w-full">
+        <div className="rounded-xl border border-black bg-black p-4 sm:p-6 flex flex-col justify-between min-h-[100px] sm:min-h-[120px] transition-transform transform hover:-translate-y-1">
+            <div className="flex justify-between items-start">
+                <h3 className="text-xs sm:text-sm font-medium text-slate-400">{title}</h3>
+                <Icon className="w-4 h-4 sm:w-5 sm:h-5 text-slate-400" />
+            </div>
             <div>
-                <div className="flex justify-between items-start mb-2">
-                    <h3 className="text-sm font-medium text-slate-400 truncate">{title}</h3>
-                    <Icon className="w-4 h-4 text-slate-400 flex-shrink-0 ml-2" />
-                </div>
-                <p className={`text-xl font-bold ${valueColor} break-words`}>
-                    {formattedValue}
-                </p>
-                {subtitle && (
-                    <p className="text-xs text-slate-500 font-medium truncate mt-1" title={subtitle}>
-                        {subtitle}
-                    </p>
+                <p className={`text-lg sm:text-xl md:text-2xl font-bold mt-1 sm:mt-2 whitespace-nowrap ${valueColor}`}>{value}</p>
+                {percentageChange !== undefined && changeType && (
+                    <div className="flex items-center gap-1 text-xs mt-1">
+                        <span className={`flex items-center font-semibold ${changeColor}`}>
+                            <ChangeIcon className="mr-1" />
+                            {percentageChange}%
+                        </span>
+                        <span className="text-slate-500">{changeText || ''}</span>
+                    </div>
+                )}
+                {changeText && percentageChange === undefined && (
+                    <p className="text-xs mt-1 text-slate-500">{changeText}</p>
                 )}
             </div>
         </div>
     );
-};
+}
 
-const DoughnutChart = ({ title, data, colors }: { title: string; data: CompositionData[]; colors: string[] }) => {
-    const chartData = {
-        labels: data?.map(d => d.category__name),
-        datasets: [{ data: data?.map(d => d.total), backgroundColor: colors, borderColor: '#0A0E1A', borderWidth: 4, hoverOffset: 8 }]
-    };
-    const options = { responsive: true, maintainAspectRatio: false, cutout: '70%', plugins: { legend: { display: data && data.length > 0, position: 'bottom' as const, labels: { color: '#9ca3af', padding: 15, usePointStyle: true, pointStyle: 'rectRounded', font: { size: 12 } } } } };
-    return (
-        <div className="bg-black rounded-xl p-4 sm:p-6 border border-slate-900 h-full flex flex-col">
-            <h3 className="font-semibold text-white mb-4 text-base">{title}</h3>
-            <div className="relative flex-grow flex items-center justify-center min-h-[250px]">
-                {data && data.length > 0 ? <Doughnut data={chartData} options={options} /> : <p className="text-slate-500 text-sm">Sem dados no período</p>}
-            </div>
-        </div>
-    );
-};
+interface Holiday { date: string; name: string; type: string; }
+interface CalendarProps {
+    upcomingTransactions: Transaction[];
+    selectedDate: Date | null;
+    onDateSelect: (date: Date) => void;
+}
 
-const LineChart = ({ title, data }: { title: string; data: TimeseriesData }) => {
-    const chartData = {
-        labels: data?.labels,
-        datasets: [
-            { label: 'Receitas', data: data?.income_data, borderColor: 'rgb(74, 222, 128)', backgroundColor: 'rgba(74, 222, 128, 0.1)', fill: true, tension: 0.4, pointBackgroundColor: 'rgb(74, 222, 128)' },
-            { label: 'Despesas', data: data?.expense_data, borderColor: 'rgb(248, 113, 113)', backgroundColor: 'rgba(248, 113, 113, 0.1)', fill: true, tension: 0.4, pointBackgroundColor: 'rgb(248, 113, 113)' }
-        ]
-    };
-    const options = { responsive: true, maintainAspectRatio: false, scales: { y: { ticks: { color: '#9ca3af', font: { size: 12 } }, grid: { color: 'rgba(55, 65, 81, 0.5)' } }, x: { ticks: { color: '#9ca3af', font: { size: 12 } }, grid: { display: false } } }, plugins: { legend: { labels: { color: '#d1d5db', font: { size: 12 } } } } };
-    return (
-        <div className="rounded-xl border border-black bg-black p-4 sm:p-6">
-            <h3 className="font-semibold text-white mb-4 text-base">{title}</h3>
-            <div className="h-80"><Line data={chartData} options={options} /></div>
-        </div>
-    );
-};
-
-const BudgetGoals = ({ goals, onAddClick, onEditClick, onDeleteClick, onAddProgressClick }: {
-    goals: BudgetGoal[]; onAddClick: () => void; onEditClick: (goal: BudgetGoal) => void; onDeleteClick: (id: number) => void; onAddProgressClick: (goal: BudgetGoal) => void;
-}) => {
-    const getProgressBarColor = (goal: BudgetGoal) => { const progress = (goal.current_amount / goal.target_amount) * 100; if (goal.goal_type === 'spending_limit') { if (progress > 100) return 'bg-red-500'; if (progress > 80) return 'bg-yellow-500'; return 'bg-blue-600'; } return 'bg-green-500'; };
-    const getAmountColor = (goal: BudgetGoal) => { if (goal.goal_type === 'spending_limit' && goal.current_amount > goal.target_amount) { return 'text-red-400'; } return 'text-white'; }
-
-    return (
-        <div className="rounded-xl border border-black bg-black p-4 sm:p-6">
-            <div className="flex justify-between items-center mb-6">
-                <h3 className="font-semibold text-white text-lg">Metas</h3>
-                <button onClick={onAddClick} className="text-blue-400 hover:text-blue-300 transition-colors" title="Adicionar nova meta"><FiPlusCircle size={20}/></button>
-            </div>
-            <div className="space-y-6">
-                {goals?.length > 0 ? goals.map(goal => (
-                    <div key={goal.id} className="flex flex-col">
-                        <div className="flex justify-between items-center text-sm mb-1">
-                            <div className="flex-1 min-w-0"><span className="font-semibold text-slate-200 truncate block">{goal.name}</span>{goal.category_name && <span className="text-slate-500 text-xs truncate block">({goal.category_name})</span>}</div>
-                            <span className={`font-medium ${getAmountColor(goal)} text-sm ml-2 flex-shrink-0`}>{formatCurrency(goal.current_amount)} / {formatCurrency(goal.target_amount)}</span>
-                        </div>
-                        <div className="w-full bg-slate-700 rounded-full h-2 mt-1"><div className={`h-2 rounded-full transition-all duration-500 ${getProgressBarColor(goal)}`} style={{ width: `${Math.min((goal.current_amount / goal.target_amount) * 100, 100)}%` }}></div></div>
-                        <div className="flex justify-end items-center gap-4 mt-2">
-                            {goal.goal_type === 'saving_goal' && (<button onClick={() => onAddProgressClick(goal)} className="text-green-400 hover:text-green-300 transition-colors flex items-center gap-1 text-xs font-semibold" title="Adicionar Progresso"><FiPlus size={12}/> <span>Progresso</span></button>)}
-                            <button onClick={() => onEditClick(goal)} className="text-slate-400 hover:text-white transition-colors" title="Editar Meta"><FiEdit size={16} /></button>
-                            <button onClick={() => onDeleteClick(goal.id)} className="text-slate-400 hover:text-red-400 transition-colors" title="Excluir Meta"><FiTrash2 size={16} /></button>
-                        </div>
-                    </div>
-                )) : (<p className="text-slate-500 text-sm text-center py-4">Nenhuma meta criada ainda.</p>)}
-            </div>
-        </div>
-    );
-};
-
-// --- Página principal ---
-export default function DashboardPage() {
-    const [isSidebarOpen, setSidebarOpen] = useState(false);
-    const router = useRouter();
-    const [period, setPeriod] = useState('this_year');
-
-    const { data: analyticsData, error, isLoading } = useSWR<AnalyticsData>(`/analytics/?period=${period}`, fetcher);
-    const { data: categoriesData } = useSWR<PaginatedCategoryResponse>('/categories/user-list/', fetcher);
-    const { data: goalsData, mutate: mutateGoals } = useSWR<BudgetGoal[]>('/budget-goals/', fetcher);
-
-    const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
-    const [categoryStats, setCategoryStats] = useState<CategoryStats | null>(null);
-    const [isCategoryLoading, setCategoryLoading] = useState(false);
-    const [isCategoryDropdownOpen, setCategoryDropdownOpen] = useState(false);
-    const categoryDropdownRef = useRef<HTMLDivElement>(null);
+// [MODIFICADO] Componente Calendar ajustado para as dimensões de referência
+function Calendar({ upcomingTransactions, selectedDate, onDateSelect }: CalendarProps) {
+    const [currentDate, setCurrentDate] = useState(new Date());
+    const [holidays, setHolidays] = useState<Holiday[]>([]);
+    const year = currentDate.getFullYear();
     
-    const [isGoalModalOpen, setGoalModalOpen] = useState(false);
-    const [isAddProgressModalOpen, setAddProgressModalOpen] = useState(false);
-    const [selectedGoal, setSelectedGoal] = useState<BudgetGoal | null>(null);
-    const [isEditMode, setIsEditMode] = useState(false);
-
     useEffect(() => {
-        if (!selectedCategory) { setCategoryStats(null); return; }
-        const fetchCategoryStats = async () => {
-            setCategoryLoading(true);
-            try { const res = await api.get(`/analytics/category-details/?name=${selectedCategory}&period=${period}`); setCategoryStats(res.data); } catch (error) { console.error(error); setCategoryStats(null); }
-            finally { setCategoryLoading(false); }
-        };
-        fetchCategoryStats();
-    }, [selectedCategory, period]);
+        fetch(`https://brasilapi.com.br/api/feriados/v1/${year}`)
+            .then(response => response.json())
+            .then(data => setHolidays(data))
+            .catch(error => console.error("Erro ao buscar feriados:", error));
+    }, [year]);
 
-    useEffect(() => {
-        function handleClickOutside(event: MouseEvent) { if (categoryDropdownRef.current && !categoryDropdownRef.current.contains(event.target as Node)) { setCategoryDropdownOpen(false); } }
-        document.addEventListener("mousedown", handleClickOutside);
-        return () => document.removeEventListener("mousedown", handleClickOutside);
-    }, []);
+    const transactionsByDay = new Map();
+    (upcomingTransactions || []).forEach(t => {
+        const date = new Date(t.date + 'T00:00:00');
+        const dayKey = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+        if (!transactionsByDay.has(dayKey)) {
+            transactionsByDay.set(dayKey, { hasIncome: false, hasExpense: false });
+        }
+        const dayData = transactionsByDay.get(dayKey);
+        if (t.category_type === 'income') dayData.hasIncome = true;
+        else dayData.hasExpense = true;
+    });
 
-    const handleLogout = () => { Cookies.remove('auth_token'); router.push('/login'); };
-    const periodOptions = [
-        { key: 'this_month', label: 'Este Mês' }, { key: 'last_month', label: 'Mês Passado' }, { key: 'last_90_days', label: 'Últimos 90 dias' }, { key: 'this_year', label: 'Este Ano' }
-    ];
-    const selectedCategoryObject = useMemo(() => categoriesData?.results?.find(c => c.name === selectedCategory), [categoriesData, selectedCategory]);
-    const handleSaveOrUpdateGoal = (goalData: BudgetGoalPayload, id?: number) => { const apiCall = id ? api.put(`/budget-goals/${id}/`, goalData) : api.post('/budget-goals/', goalData); toast.promise(apiCall.then(() => mutateGoals()), { loading: 'Salvando...', success: id ? 'Meta atualizada!' : 'Meta criada!', error: id ? 'Erro ao atualizar.' : 'Erro ao criar.' }).finally(() => setGoalModalOpen(false)); };
-    const handleAddProgress = async (goalId: number, amount: number) => { try { await api.post(`/budget-goals/${goalId}/add-progress/`, { amount }); mutateGoals(); setAddProgressModalOpen(false); toast.success('Progresso adicionado!'); } catch (err) { toast.error('Erro ao adicionar progresso.'); } };
-    const handleDeleteGoal = async (id: number) => { if (window.confirm('Tem certeza?')) { try { await api.delete(`/budget-goals/${id}/`); toast.success('Meta excluída!'); mutateGoals(); } catch (err) { toast.error('Erro ao excluir.'); } } };
-    const openAddModal = () => { setSelectedGoal(null); setIsEditMode(false); setGoalModalOpen(true); };
-    const openEditModal = (goal: BudgetGoal) => { setSelectedGoal(goal); setIsEditMode(true); setGoalModalOpen(true); };
-    const openAddProgressModal = (goal: BudgetGoal) => { setSelectedGoal(goal); setAddProgressModalOpen(true); };
+    const handlePrevMonth = () => { 
+        setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1)); 
+    };
     
-    const MainContent = () => (
-        <div className="space-y-6">
-            <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-                <StatCard title="Total de Receitas" value={analyticsData?.kpis?.income} icon={FiTrendingUp} />
-                <StatCard title="Total de Despesas" value={analyticsData?.kpis?.expenses} icon={FiTrendingDown} />
-                <StatCard title="Lucro/Prejuízo" value={analyticsData?.kpis?.net_profit} icon={FiDollarSign} />
-                <StatCard title="Gasto Médio Diário" value={analyticsData?.kpis?.average_daily_expense} icon={FiActivity} />
-                <StatCard title="Transações" value={`${analyticsData?.kpis?.income_transactions ?? 0} / ${analyticsData?.kpis?.expense_transactions ?? 0}`} subtitle="Receitas / Despesas" icon={FiHash} />
-                <StatCard title="Principal Gasto" value={analyticsData?.kpis?.top_expense_category?.amount} subtitle={analyticsData?.kpis?.top_expense_category?.name ?? 'Nenhuma despesa'} icon={FiTag} />
-            </div>
+    const handleNextMonth = () => { 
+        setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1)); 
+    };
+    
+    const month = currentDate.getMonth();
+    const monthName = currentDate.toLocaleString('pt-BR', { month: 'long' });
+    const formattedMonthName = monthName.charAt(0).toUpperCase() + monthName.slice(1);
+    const daysOfWeek = ["DOM", "SEG", "TER", "QUA", "QUI", "SEX", "SÁB"];
+    const firstDayOfMonth = new Date(year, month, 1).getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const today = new Date();
 
-            <div className="rounded-xl border border-black bg-black p-4 sm:p-6 space-y-4">
-                <h3 className="font-semibold text-white text-base">Análise por Categoria</h3>
-                <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
-                    <div className="relative w-full sm:w-1/2" ref={categoryDropdownRef}>
-                        <button type="button" onClick={() => setCategoryDropdownOpen(!isCategoryDropdownOpen)} className="w-full flex justify-between items-center p-3 rounded-md bg-slate-900 text-white border border-gray-700 text-sm" disabled={!categoriesData}>
-                            <span className={`font-medium truncate ${selectedCategoryObject?.type === 'income' ? 'text-green-400' : selectedCategoryObject?.type === 'expense' ? 'text-red-400' : 'text-slate-400'}`}>{selectedCategoryObject?.name || 'Selecione uma categoria...'}</span>
-                            <FiChevronDown className={`transition-transform flex-shrink-0 ${isCategoryDropdownOpen ? 'rotate-180' : ''}`} />
-                        </button>
-                        {isCategoryDropdownOpen && (<div className="absolute w-full mt-1 bg-gray-800 border border-gray-700 rounded-lg z-10 max-h-60 overflow-y-auto">{categoriesData?.results?.map((category) => (<div key={category.id} onClick={() => { setSelectedCategory(category.name); setCategoryDropdownOpen(false); }} className="p-3 hover:bg-blue-600 cursor-pointer text-sm"><span className={`font-medium ${category.type === 'income' ? 'text-green-400' : 'text-red-400'}`}>{category.name}</span></div>))}</div>)}
+    const calendarDays = Array.from({ length: firstDayOfMonth }, (_, i) => (
+        <div key={`empty-${i}`}></div>
+    ));
+
+    for (let day = 1; day <= daysInMonth; day++) {
+        const dateObj = new Date(year, month, day);
+        const isToday = day === today.getDate() && month === today.getMonth() && year === today.getFullYear();
+        const isSelected = selectedDate &&
+            day === selectedDate.getDate() &&
+            month === selectedDate.getMonth() &&
+            year === selectedDate.getFullYear();
+        
+        const dayKey = `${year}-${month}-${day}`;
+        const dayTransactions = transactionsByDay.get(dayKey);
+        const hasIncome = dayTransactions?.hasIncome || false;
+        const hasExpense = dayTransactions?.hasExpense || false;
+        
+        const dateString = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        const holiday = holidays.find(h => h.date === dateString);
+
+        calendarDays.push(
+            <div
+                key={day}
+                onClick={() => onDateSelect(dateObj)}
+                className={`flex items-center justify-center h-9 w-9 text-base rounded-full transition-colors cursor-pointer relative
+                    ${isSelected 
+                        ? 'ring-2 ring-blue-400' 
+                        : 'hover:bg-slate-700'}
+                    ${isToday 
+                        ? 'bg-blue-600 text-white font-bold'
+                        : 'text-slate-200'}
+                `}
+                title={holiday?.name}
+            >
+                {day}
+                
+                {(hasIncome || hasExpense) && (
+                    <div className="absolute bottom-1 flex gap-0.5">
+                        {hasIncome && <span className="w-1.5 h-1.5 bg-green-400 rounded-full" title="Receita neste dia"></span>}
+                        {hasExpense && <span className="w-1.5 h-1.5 bg-red-400 rounded-full" title="Despesa neste dia"></span>}
                     </div>
-                    {selectedCategory && (<button onClick={() => setSelectedCategory(null)} className="px-3 py-2 bg-slate-800 text-slate-300 rounded-md hover:bg-slate-700 text-sm w-full sm:w-auto">Limpar</button>)}
+                )}
+                
+                {holiday && (
+                    <span 
+                        className="absolute top-1 left-1 w-1.5 h-1.5 bg-yellow-400 rounded-full"
+                        title={holiday.name}
+                    ></span>
+                )}
+            </div>
+        );
+    }
+
+    return (
+        <div className="flex flex-col h-full">
+            <div className="flex justify-between items-center mb-4">
+                <h3 className="font-semibold text-white">{`${formattedMonthName} ${year}`}</h3>
+                <div className="flex items-center gap-2">
+                    <button onClick={handlePrevMonth} className="text-slate-400 hover:text-white transition-colors"><FiChevronLeft className="w-5 h-5" /></button>
+                    <button onClick={handleNextMonth} className="text-slate-400 hover:text-white transition-colors"><FiChevronRight className="w-5 h-5" /></button>
                 </div>
-                {isCategoryLoading && <p className="text-slate-400 animate-pulse text-sm">Analisando...</p>}
-                {!isCategoryLoading && categoryStats && selectedCategory && (<div className="bg-slate-900/50 p-4 rounded-lg space-y-4"><h4 className="text-lg font-semibold text-white">Resultados para: {selectedCategory}</h4>{categoryStats.type === 'income' ? (<div><p className="text-sm text-slate-400">Receita Total</p><p className="text-2xl font-bold text-green-400">{formatCurrency(categoryStats.income)}</p><div className="mt-4"><div className="flex justify-between items-center mb-1"><span className="text-sm text-slate-400">Representa no total</span><span className="text-sm font-bold text-white">{categoryStats.percentage.toFixed(1)}%</span></div><div className="w-full bg-slate-700 rounded-full h-2"><div className="bg-green-500 h-2 rounded-full" style={{ width: `${Math.min(categoryStats.percentage, 100)}%` }}></div></div></div></div>) : (<div><p className="text-sm text-slate-400">Despesa Total</p><p className="text-2xl font-bold text-red-400">{formatCurrency(categoryStats.expenses)}</p><div className="mt-4"><div className="flex justify-between items-center mb-1"><span className="text-sm text-slate-400">Representa no total</span><span className="text-sm font-bold text-white">{categoryStats.percentage.toFixed(1)}%</span></div><div className="w-full bg-slate-700 rounded-full h-2"><div className="bg-blue-600 h-2 rounded-full" style={{ width: `${Math.min(categoryStats.percentage, 100)}%` }}></div></div></div></div>)}</div>)}
-                {!selectedCategory && !isCategoryLoading && (<div className="text-slate-500 italic text-sm">Selecione uma categoria para ver os detalhes.</div>)}
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <div className="lg:col-span-2">{analyticsData && (<LineChart title={`Receitas vs. Despesas (${periodOptions.find(p => p.key === period)?.label})`} data={analyticsData.timeseries_data} />)}</div>
-                <div className="flex flex-col gap-6">{analyticsData && (<DoughnutChart title="Composição das Receitas" data={analyticsData.income_composition} colors={['#2563eb', '#3b82f6', '#60a5fa']} />)}{analyticsData && (<DoughnutChart title="Composição das Despesas" data={analyticsData.expense_composition} colors={['#ef4444', '#f87171', '#fca5a5']} />)}</div>
             </div>
             
-            <div><BudgetGoals goals={goalsData || []} onAddClick={openAddModal} onEditClick={openEditModal} onDeleteClick={handleDeleteGoal} onAddProgressClick={openAddProgressModal} /></div>
+            <div className="grid grid-cols-7 text-center text-sm font-medium text-slate-400 mb-2">
+                {daysOfWeek.map(day => <div key={day}>{day}</div>)}
+            </div>
+            
+            <div className="grid grid-cols-7 place-items-center text-center gap-y-2 flex-grow">
+                {calendarDays}
+            </div>
+
+            <div className="mt-auto pt-4 border-t border-slate-800">
+                <div className="flex flex-wrap justify-center gap-x-3 gap-y-1 text-xs text-slate-400">
+                    <div className="flex items-center gap-1.5">
+                        <span className="w-2 h-2 bg-green-400 rounded-full"></span>
+                        <span>Receita</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                        <span className="w-2 h-2 bg-red-400 rounded-full"></span>
+                        <span>Despesa</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                        <span className="w-2 h-2 bg-yellow-400 rounded-full"></span>
+                        <span>Feriado</span>
+                    </div>
+                </div>
+            </div>
         </div>
     );
+}
+
+interface TransactionItemProps { transaction: Transaction; }
+
+function TransactionItem({ transaction }: TransactionItemProps) {
+    const { category_type, description, date, amount } = transaction;
+    const isIncome = category_type === 'income';
+    const Icon = isIncome ? FiArrowUpCircle : FiArrowDownCircle;
+    const color = isIncome ? 'text-green-400' : 'text-red-400';
+    const formattedAmount = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(amount));
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const transactionDate = new Date(date + 'T00:00:00');
+    const diffTime = transactionDate.getTime() - today.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    let dueDateText = '';
+    if (isIncome) {
+        if (diffDays < 0) dueDateText = `Recebido há ${Math.abs(diffDays)} dias`;
+        else if (diffDays === 0) dueDateText = 'Recebido hoje';
+        else if (diffDays === 1) dueDateText = 'Previsto para amanhã';
+        else dueDateText = `Previsto para ${diffDays} dias`;
+    } else {
+        if (diffDays < 0) dueDateText = `Venceu há ${Math.abs(diffDays)} dias`;
+        else if (diffDays === 0) dueDateText = 'Vence hoje';
+        else if (diffDays === 1) dueDateText = 'Vence amanhã';
+        else dueDateText = `Vence em ${diffDays} dias`;
+    }
+    return (
+        <li className="flex items-center justify-between py-2 sm:py-3 border-b border-gray-800 last:border-none">
+            <div className="flex items-center gap-3 sm:gap-4 min-w-0 flex-1">
+                <Icon className={`w-5 h-5 sm:w-6 sm:h-6 flex-shrink-0 ${color}`} />
+                <div className="min-w-0 flex-1">
+                    <p className="font-medium text-slate-200 truncate">{description}</p>
+                    <p className="text-xs sm:text-sm text-slate-400 truncate">{dueDateText}</p>
+                </div>
+            </div>
+            <p className={`font-semibold whitespace-nowrap text-sm sm:text-base ml-2 ${color}`}>
+                {isIncome ? `+ ${formattedAmount}` : `- ${formattedAmount}`}
+            </p>
+        </li>
+    );
+}
+
+// --- FIM DOS COMPONENTES INTERNOS ---
+
+const fetcher = (url: string) => api.get(url).then(res => res.data);
+
+interface DashboardData {
+    summary: {
+        actual_balance: number;
+        projected_balance: number;
+        monthly_income: number;
+        monthly_expenses: number;
+        net_profit: number;
+        net_profit_variation: number;
+    };
+    expense_chart: { labels: string[]; data: number[]; };
+    upcoming_transactions: Transaction[];
+    notifications: {
+        due_today: Transaction[];
+        due_tomorrow: Transaction[];
+    };
+}
+interface UserProfile {
+    username: string;
+}
+
+export default function HomePage() {
+    const [isSidebarOpen, setSidebarOpen] = useState(false);
+    const [isNotificationModalOpen, setNotificationModalOpen] = useState(false);
+    const router = useRouter();
+
+    const { data: userProfile } = useSWR<UserProfile>('/user/profile/', fetcher);
+    const { data: dashboardData, error, isLoading } = useSWR<DashboardData>('/dashboard/', fetcher);
+    
+    const [visibleNotifications, setVisibleNotifications] = useState<{ due_today: Transaction[], due_tomorrow: Transaction[] }>({ due_today: [], due_tomorrow: [] });
+    const [expenseData, setExpenseData] = useState<ChartData<'doughnut'>>({ labels: [], datasets: [] });
+    const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+
+    useEffect(() => {
+        if (dashboardData?.notifications) {
+            const storedPaidIds = localStorage.getItem('paidNotificationIds');
+            const paidIds: number[] = storedPaidIds ? JSON.parse(storedPaidIds) : [];
+
+            const filteredToday = dashboardData.notifications.due_today.filter(t => !paidIds.includes(t.id));
+            const filteredTomorrow = dashboardData.notifications.due_tomorrow.filter(t => !paidIds.includes(t.id));
+
+            setVisibleNotifications({
+                due_today: filteredToday,
+                due_tomorrow: filteredTomorrow
+            });
+        }
+    }, [dashboardData]);
+
+    useEffect(() => {
+        const hasBeenAcknowledged = sessionStorage.getItem('notificationsAcknowledged') === 'true';
+        const hasVisibleNotifications = visibleNotifications.due_today.length > 0 || visibleNotifications.due_tomorrow.length > 0;
+
+        if (!hasBeenAcknowledged && hasVisibleNotifications) {
+            setNotificationModalOpen(true);
+        }
+    }, [visibleNotifications]);
+
+    useEffect(() => {
+        if (dashboardData?.expense_chart) {
+            const formattedData: ChartData<'doughnut'> = {
+                labels: dashboardData.expense_chart.labels,
+                datasets: [{
+                    label: 'Despesas do Mês', data: dashboardData.expense_chart.data,
+                    backgroundColor: ['#1e3a8a', '#1d4ed8', '#2563eb', '#3b82f6', '#60a5fa', '#93c5fd'],
+                    borderColor: '#0f172a', 
+                    borderWidth: 3,
+                    hoverBackgroundColor: ['#1e40af', '#2563eb', '#3b82f6', '#60a5fa', '#93c5fd', '#dbeafe']
+                }],
+            };
+            setExpenseData(formattedData);
+        }
+    }, [dashboardData]);
+
+    const getNext30DaysTransactions = (transactions: Transaction[]): Transaction[] => {
+        if (!transactions) return [];
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        
+        const thirtyDaysFromNow = new Date();
+        thirtyDaysFromNow.setDate(today.getDate() + 30);
+        thirtyDaysFromNow.setHours(23, 59, 59, 999);
+
+        return transactions.filter(transaction => {
+            const transactionDate = new Date(transaction.date + 'T00:00:00');
+            return transactionDate >= today && transactionDate <= thirtyDaysFromNow;
+        });
+    };
+
+    const formatCurrency = (value: number | undefined) => {
+        if (value === undefined || isNaN(value)) return "R$ 0,00";
+        return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
+    }
+    
+    const handleMarkAsPaid = (transactionId: number) => {
+        const storedPaidIds = localStorage.getItem('paidNotificationIds');
+        const paidIds: number[] = storedPaidIds ? JSON.parse(storedPaidIds) : [];
+
+        if (!paidIds.includes(transactionId)) {
+            const newPaidIds = [...paidIds, transactionId];
+            localStorage.setItem('paidNotificationIds', JSON.stringify(newPaidIds));
+        }
+
+        setVisibleNotifications(prev => ({
+            due_today: prev.due_today.filter(t => t.id !== transactionId),
+            due_tomorrow: prev.due_tomorrow.filter(t => t.id !== transactionId),
+        }));
+    };
+    
+    const handleCloseModal = () => {
+        setNotificationModalOpen(false);
+        sessionStorage.setItem('notificationsAcknowledged', 'true');
+    };
+
+    const handleLogout = () => {
+        sessionStorage.removeItem('notificationsAcknowledged');
+        Cookies.remove('auth_token');
+        router.push('/login');
+    };
+
+    const handleDateSelect = (date: Date) => {
+        if (selectedDate && selectedDate.getTime() === date.getTime()) {
+            setSelectedDate(null);
+        } else {
+            setSelectedDate(date);
+        }
+    };
+
+    const upcomingTransactions = dashboardData?.upcoming_transactions || [];
+    const next30DaysTransactions = getNext30DaysTransactions(upcomingTransactions);
+
+    const filteredTransactions = (selectedDate 
+        ? next30DaysTransactions.filter(transaction => {
+            const transactionDate = new Date(transaction.date + 'T00:00:00');
+            return (
+                transactionDate.getFullYear() === selectedDate.getFullYear() &&
+                transactionDate.getMonth() === selectedDate.getMonth() &&
+                transactionDate.getDate() === selectedDate.getDate()
+            );
+        })
+        : next30DaysTransactions
+    );
+
+    const totalVisibleNotifications = (visibleNotifications.due_today.length || 0) + 
+                                      (visibleNotifications.due_tomorrow.length || 0);
+
+    const chartOptions: ChartOptions<'doughnut'> = {
+        responsive: true,
+        maintainAspectRatio: false,
+        cutout: '60%',
+        plugins: {
+            legend: { display: false },
+            tooltip: {
+                backgroundColor: '#1e293b',
+                titleColor: '#cbd5e1',
+                bodyColor: '#cbd5e1',
+                padding: 10,
+                callbacks: {
+                    label: function (context: TooltipItem<'doughnut'>) {
+                        const label = context.label || '';
+                        const value = context.parsed || 0;
+                        return `${label}: ${formatCurrency(value)}`;
+                    }
+                }
+            }
+        }
+    };
 
     return (
         <AnimatedLayout>
             <div className="flex h-screen overflow-hidden">
-                <Toaster position="top-right" toastOptions={{ style: { background: '#333', color: '#fff' } }} />
+                {isSidebarOpen && (<div onClick={() => setSidebarOpen(false)} className="fixed inset-0 bg-black/60 z-20 lg:hidden"></div>)}
                 <Sidebar isSidebarOpen={isSidebarOpen} handleLogout={handleLogout} />
-                
-                <main className="flex-1 p-4 sm:p-6 md:p-8 overflow-y-auto">
-                    {/* ALTERAÇÃO: A estrutura do header foi ajustada para o comportamento de quebra de linha */}
-                    <header className="mb-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                        <div className='flex-1'>
-                            <h2 className="text-2xl md:text-3xl font-bold text-white">Dashboard de Análise</h2>
-                            <p className="text-slate-400 text-base">Filtre e analise suas finanças em detalhes.</p>
-                        </div>
-                        
-                        {/* ALTERAÇÃO: O container dos botões agora usa 'flex-wrap' */}
-                        <div className="flex flex-wrap items-center gap-1 bg-black p-1 rounded-lg border border-gray-800 w-full sm:w-auto">
-                           {periodOptions.map(option => (
-                               <button 
-                                   key={option.key} 
-                                   onClick={() => setPeriod(option.key)} 
-                                   // ALTERAÇÃO: Botões agora se expandem em telas pequenas ('flex-1')
-                                   className={`px-3 py-1.5 text-sm font-semibold rounded-md transition-colors flex-1 sm:flex-none text-center ${period === option.key ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-slate-800'}`}
-                               > 
-                                   {option.label} 
-                               </button>
-                           ))}
-                        </div>
 
-                        <button 
-                            onClick={() => setSidebarOpen(true)} 
-                            className="lg:hidden p-2 rounded-md hover:bg-slate-800 absolute top-4 right-4"
-                        >
-                            <FiMenu className="w-6 h-6 text-white" />
-                        </button>
+                <main className="flex-1 p-3 sm:p-4 md:p-6 lg:p-8 overflow-y-auto">
+                    <header className="mb-6 sm:mb-8 flex items-center justify-between">
+                        <div className="max-w-full">
+                            <h2 className="text-xl sm:text-2xl md:text-3xl font-bold text-white truncate">
+                                Olá, Bem-vindo {userProfile ? userProfile.username : '...'}! ☕
+                            </h2>
+                            <p className="text-slate-400 text-sm sm:text-base">Aqui está o resumo financeiro do seu mês.</p>
+                        </div>
+                        <div className="flex items-center gap-2 sm:gap-4">
+                            <button
+                                onClick={() => setNotificationModalOpen(true)}
+                                className="relative p-1.5 sm:p-2 rounded-md hover:bg-slate-800 transition-colors"
+                                title="Ver Notificações"
+                            >
+                                <FiBell className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+                                {totalVisibleNotifications > 0 && (
+                                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full h-4 w-4 sm:h-5 sm:w-5 flex items-center justify-center animate-pulse">
+                                        {totalVisibleNotifications}
+                                    </span>
+                                )}
+                            </button>
+                            <button onClick={() => setSidebarOpen(true)} className="lg:hidden p-1.5 sm:p-2 rounded-md hover:bg-slate-800">
+                                <FiMenu className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+                            </button>
+                        </div>
                     </header>
+                    
+                    {error && !isLoading &&
+                        <div className="rounded-xl border border-red-900 bg-red-950 p-4 sm:p-6 text-center text-red-400 mb-4 sm:mb-6 text-sm sm:text-base">
+                            Erro ao carregar dados. Sua sessão pode ter expirado.
+                        </div>
+                    }
 
-                    {isLoading && <div className="text-center text-slate-400 py-10">Carregando dashboard...</div>}
-                    {error && <div className="text-center text-red-400 py-10">Erro ao carregar os dados.</div>}
-                    {analyticsData && !isLoading && <MainContent />}
+                    <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4 md:gap-6 mb-4 sm:mb-6">
+                        {isLoading ? <div className="col-span-full rounded-xl border border-black bg-black p-4 sm:p-6 text-center text-slate-400 animate-pulse text-sm sm:text-base">Carregando painel...</div>
+                            : error ? null
+                                : (
+                                    <>
+                                        <StatCard title="Saldo Atual" value={formatCurrency(dashboardData?.summary?.actual_balance)} icon={FiBriefcase} />
+                                        <StatCard title="Saldo Projetado" value={formatCurrency(dashboardData?.summary?.projected_balance)} icon={FiFuture} />
+                                        <StatCard title="Receitas do Mês" value={formatCurrency(dashboardData?.summary?.monthly_income)} icon={FiTrendingUp} />
+                                        <StatCard title="Despesas do Mês" value={formatCurrency(dashboardData?.summary?.monthly_expenses)} icon={FiTrendingDown} />
+                                        <div className="xs:col-span-2 sm:col-span-1">
+                                            <StatCard
+                                                title="Variação do Lucro"
+                                                value={`${(dashboardData?.summary?.net_profit_variation ?? 0) >= 0 ? '+' : ''}${(dashboardData?.summary?.net_profit_variation ?? 0).toFixed(2)}%`}
+                                                icon={(dashboardData?.summary?.net_profit_variation ?? 0) >= 0 ? FiTrendingUp : FiTrendingDown}
+                                                changeText="vs mês anterior"
+                                            />
+                                        </div>
+                                    </>
+                                )}
+                    </div>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
+                        <div className="lg:col-span-2 flex flex-col gap-4 sm:gap-6">
+                            <div className="rounded-xl border border-black bg-black p-4 sm:p-6 h-80 sm:h-96">
+                                <h3 className="font-semibold mb-3 sm:mb-4 text-white text-sm sm:text-base">Visão Geral de Despesas</h3>
+                                <div className="relative h-full w-full max-h-[250px] sm:max-h-[300px] mx-auto">
+                                    {isLoading && <div className="flex items-center justify-center h-full text-slate-500 animate-pulse text-sm sm:text-base">Carregando gráfico...</div>}
+                                    {dashboardData?.expense_chart?.data.length === 0 && !isLoading && !error ? (
+                                        <div className="flex flex-col items-center justify-center h-full text-slate-500 text-sm sm:text-base">
+                                            <FiInbox className="w-8 h-8 sm:w-10 sm:h-10 mb-2" />
+                                            <p>Nenhuma despesa este mês.</p>
+                                        </div>
+                                    ) : ( expenseData.datasets.length > 0 && !error && <ExpenseChart chartData={expenseData} options={chartOptions} />)}
+                                </div>
+                            </div>
+
+                            <div className="rounded-xl border border-black bg-black p-4 sm:p-6">
+                                <div className="flex items-center justify-between mb-3 sm:mb-4">
+                                    <h3 className="font-semibold text-white text-sm sm:text-base">
+                                        {selectedDate
+                                            ? `Lançamentos de ${selectedDate.toLocaleDateString('pt-BR')}`
+                                            : "Próximos Lançamentos (30 dias)"
+                                        }
+                                    </h3>
+                                    <a href="/transactions" className="flex items-center gap-1 sm:gap-2 text-xs sm:text-sm text-blue-400 hover:text-blue-300 font-semibold">
+                                        Ver todos <FiArrowRight className="w-3 h-3 sm:w-4 sm:h-4" />
+                                    </a>
+                                </div>
+                                <ul className="flex flex-col max-h-80 sm:max-h-96 overflow-y-auto">
+                                    {isLoading && <p className="text-slate-500 text-xs sm:text-sm animate-pulse">Carregando lançamentos...</p>}
+                                    {filteredTransactions && filteredTransactions.length > 0 && !error ? (
+                                        filteredTransactions.map((transaction) => (
+                                            <TransactionItem key={transaction.id} transaction={transaction} />
+                                        ))
+                                    ) : (
+                                        !isLoading && !error && (
+                                            <div className="flex flex-col items-center justify-center py-6 sm:py-10 text-center">
+                                                <FiInbox className="w-8 h-8 sm:w-10 sm:h-10 text-slate-600 mb-2" />
+                                                <p className="text-slate-500 text-xs sm:text-sm">
+                                                    {selectedDate ? "Nenhum lançamento para este dia." : "Nenhum lançamento nos próximos 30 dias."}
+                                                </p>
+                                                <p className="text-slate-600 text-xs">
+                                                    {selectedDate ? "" : "Você está em dia!"}
+                                                </p>
+                                            </div>
+                                        )
+                                    )}
+                                </ul>
+                            </div>
+                        </div>
+
+                        <div className="lg:col-span-1 rounded-xl border border-black bg-black p-4 sm:p-6 h-fit">
+                            <Calendar
+                                upcomingTransactions={next30DaysTransactions}
+                                selectedDate={selectedDate}
+                                onDateSelect={handleDateSelect}
+                            />
+                        </div>
+                    </div>
                 </main>
-
-                <AddGoalModal isOpen={isGoalModalOpen} onClose={() => setGoalModalOpen(false)} onSave={handleSaveOrUpdateGoal} initialData={isEditMode ? selectedGoal : null} categories={categoriesData?.results} />
-                <AddProgressModal isOpen={isAddProgressModalOpen} onClose={() => setAddProgressModalOpen(false)} onSave={handleAddProgress} goal={selectedGoal} />
             </div>
+            
+            <NotificationModal
+                isOpen={isNotificationModalOpen}
+                onClose={handleCloseModal}
+                dueToday={visibleNotifications.due_today}
+                dueTomorrow={visibleNotifications.due_tomorrow}
+                onMarkAsPaid={handleMarkAsPaid}
+            />
         </AnimatedLayout>
     );
 }
